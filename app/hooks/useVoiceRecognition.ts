@@ -1,100 +1,143 @@
 // hooks/useVoiceRecognition.ts
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// --- 1. Type Definitions (Fixes the "cannot find event" error) ---
+// Types
 interface SpeechRecognitionEvent extends Event {
   resultIndex: number;
   results: SpeechRecognitionResultList;
 }
-
 interface SpeechRecognitionResultList {
   length: number;
   [index: number]: SpeechRecognitionResult;
 }
-
 interface SpeechRecognitionResult {
+  isFinal: boolean;
   [index: number]: SpeechRecognitionAlternative;
 }
-
 interface SpeechRecognitionAlternative {
   transcript: string;
+  confidence: number;
 }
-
 interface SpeechRecognitionErrorEvent extends Event {
   error: string;
 }
-
 interface SpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
   start: () => void;
   stop: () => void;
+  abort: () => void;
   onresult: (event: SpeechRecognitionEvent) => void;
   onerror: (event: SpeechRecognitionErrorEvent) => void;
   onend: () => void;
 }
 
-// --- 2. The Hook ---
 export function useVoiceRecognition() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  
+  // Refs to handle "keep-alive" logic without triggering re-renders
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const shouldBeListeningRef = useRef(false);
 
   useEffect(() => {
-    // Check if browser supports speech recognition
-    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-      const SpeechRecognitionConstructor =
-        (window as any).SpeechRecognition ||
-        (window as any).webkitSpeechRecognition;
+    // Cross-browser support (Chrome/Safari/Edge)
+    const SpeechRecognitionConstructor =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
 
-      recognitionRef.current = new SpeechRecognitionConstructor();
-      
-      if (recognitionRef.current) {
-        recognitionRef.current.continuous = true; // Keep listening
-        recognitionRef.current.interimResults = true; // Show results immediately
-        recognitionRef.current.lang = "en-US";
+    if (!SpeechRecognitionConstructor) {
+      setError("Browser not supported. Please use Chrome or Safari.");
+      return;
+    }
 
-        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-          let interimTranscript = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            interimTranscript += event.results[i][0].transcript;
+    recognitionRef.current = new SpeechRecognitionConstructor();
+    const recognition = recognitionRef.current;
+
+    if (recognition) {
+      recognition.continuous = true; // Essential for long scripts
+      recognition.interimResults = true; // Faster feedback
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          const alt = result[0];
+          
+          // Sensitivity Check: Ignore low-confidence murmurs (< 50% confidence)
+          // Note: 'interim' results often have low confidence, so we only filter 'final' results hard.
+          if (result.isFinal && alt.confidence < 0.5) {
+             continue; 
           }
-          // Normalize text (lowercase) for easier matching
-          setTranscript(interimTranscript.toLowerCase());
-        };
+          interimTranscript += alt.transcript;
+        }
+        setTranscript(interimTranscript.toLowerCase());
+      };
 
-        recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
-          console.error("Speech recognition error", event.error);
-          setIsListening(false);
-        };
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        // "no-speech" is common when the user pauses. We ignore it to keep the UI clean.
+        if (event.error !== "no-speech") {
+          console.error("Speech error:", event.error);
+          // Only show fatal errors
+          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+             setError("Microphone permission denied.");
+             setIsListening(false);
+             shouldBeListeningRef.current = false;
+          }
+        }
+      };
 
-        recognitionRef.current.onend = () => {
+      // Auto-restart logic for Safari (which stops listening after silence)
+      recognition.onend = () => {
+        if (shouldBeListeningRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {
+            // Ignore errors if it's already started
+          }
+        } else {
           setIsListening(false);
-        };
+        }
+      };
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const startListening = useCallback(() => {
+    setError(null);
+    if (recognitionRef.current) {
+      try {
+        shouldBeListeningRef.current = true;
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (e) {
+        console.error("Start error:", e);
       }
     }
   }, []);
 
-  const startListening = useCallback(() => {
-    if (recognitionRef.current && !isListening) {
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
-  }, [isListening]);
-
   const stopListening = useCallback(() => {
-    if (recognitionRef.current && isListening) {
+    if (recognitionRef.current) {
+      shouldBeListeningRef.current = false;
       recognitionRef.current.stop();
       setIsListening(false);
     }
-  }, [isListening]);
+  }, []);
 
   const resetTranscript = () => setTranscript("");
 
   return {
     isListening,
     transcript,
+    error,
     startListening,
     stopListening,
     resetTranscript,

@@ -1,235 +1,272 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
-import { Mic, Square, AlignLeft, MousePointer2, Type, RotateCcw } from "lucide-react";
+import { 
+  Mic, Square, AlignLeft, MousePointer2, Type, RotateCcw, 
+  Settings2, X, Smartphone, Monitor
+} from "lucide-react";
 import { clsx } from "clsx";
 
+// --- Types ---
+type FontSize = "text-xl" | "text-2xl" | "text-4xl" | "text-6xl"; // Adjusted for mobile
+type FontFamily = "font-sans" | "font-serif" | "font-mono";
+type ColorTheme = "green" | "yellow" | "blue" | "white";
+
 export default function VoiceReader() {
-  const { isListening, transcript, startListening, stopListening, hasSupport, resetTranscript } =
+  const { isListening, transcript, error, startListening, stopListening, hasSupport, resetTranscript } =
     useVoiceRecognition();
 
   const [script, setScript] = useState(
-    "The sky above the port was the color of television, tuned to a dead channel."
+    "The sky above the port was the color of television, tuned to a dead channel. It was a bright cold day in April, and the clocks were striking thirteen."
   );
 
-  // Tracks the index of the last successfully spoken word
+  // --- State ---
   const [activeIndex, setActiveIndex] = useState(-1);
-
-  // Modes: 'flow' (Spotify/Karaoke), 'highlight' (Block Highlight), 'caret' (Cursor)
   const [mode, setMode] = useState<"flow" | "highlight" | "caret">("flow");
+  const [isAutoScroll, setIsAutoScroll] = useState(true);
+  
+  // Settings Defaults
+  const [showSettings, setShowSettings] = useState(false);
+  const [fontSize, setFontSize] = useState<FontSize>("text-2xl"); // Default smaller for mobile safety
+  const [fontFamily, setFontFamily] = useState<FontFamily>("font-sans");
+  const [themeColor, setThemeColor] = useState<ColorTheme>("green");
+
+  // Refs
+  const activeWordRef = useRef<HTMLSpanElement | null>(null);
+  const wakeLockRef = useRef<any>(null);
 
   const scriptWords = useMemo(() => script.split(/\s+/), [script]);
 
-  // --- KARAOKE LOGIC (UPDATED) ---
+  // --- WAKE LOCK (Prevents phone screen from sleeping) ---
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if (isListening && 'wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        } catch (err) {
+           console.log("Wake Lock rejected");
+        }
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    };
+
+    if (isListening) requestWakeLock();
+    else releaseWakeLock();
+
+    return () => { releaseWakeLock(); };
+  }, [isListening]);
+
+
+  // --- AUTO SCROLL ---
+  useEffect(() => {
+    if (isAutoScroll && activeWordRef.current) {
+      activeWordRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeIndex, isAutoScroll]);
+
+  // --- MATCHING LOGIC ---
   useEffect(() => {
     if (!isListening || !transcript) return;
-
     const spokenWords = transcript.toLowerCase().split(/\s+/);
     const cleanScriptWords = scriptWords.map(w => w.toLowerCase().replace(/[.,]/g, ""));
-    
-    // We start checking from the next word
     let tempActiveIndex = activeIndex;
     
-    // Iterate through the words you just spoke to see if they match the UPCOMING script words
-    // We try to match a sequence: if you said "The sky above", we tick off "The", then "sky", then "above"
     for (const spokenWord of spokenWords) {
         const nextIndex = tempActiveIndex + 1;
         if (nextIndex >= cleanScriptWords.length) break;
-
         const expectedWord = cleanScriptWords[nextIndex];
-
-        // "Fuzzy" match: does the spoken word contain the expected word? (e.g. "playing" matches "play")
-        // Or exact match
         if (spokenWord.includes(expectedWord) || expectedWord.includes(spokenWord)) {
             tempActiveIndex = nextIndex;
         }
     }
-
-    // Only update state if we actually advanced
-    if (tempActiveIndex > activeIndex) {
-        setActiveIndex(tempActiveIndex);
-    }
+    if (tempActiveIndex > activeIndex) setActiveIndex(tempActiveIndex);
   }, [transcript, activeIndex, scriptWords, isListening]);
 
-  // Reset progress when starting over
+  // --- RESET ---
   const handleStart = () => {
     setActiveIndex(-1);
     resetTranscript();
     startListening();
   };
 
-  // --- KARAOKE LOGIC (UPDATED) ---
-  useEffect(() => {
-    if (!isListening || !transcript) return;
-
-    const spokenWords = transcript.toLowerCase().split(/\s+/);
-    const cleanScriptWords = scriptWords.map(w => w.toLowerCase().replace(/[.,]/g, ""));
-    
-    // We start checking from the next word
-    let tempActiveIndex = activeIndex;
-    
-    // Iterate through the words you just spoke to see if they match the UPCOMING script words
-    // We try to match a sequence: if you said "The sky above", we tick off "The", then "sky", then "above"
-    for (const spokenWord of spokenWords) {
-        const nextIndex = tempActiveIndex + 1;
-        if (nextIndex >= cleanScriptWords.length) break;
-
-        const expectedWord = cleanScriptWords[nextIndex];
-
-        // "Fuzzy" match: does the spoken word contain the expected word? (e.g. "playing" matches "play")
-        // Or exact match
-        if (spokenWord.includes(expectedWord) || expectedWord.includes(spokenWord)) {
-            tempActiveIndex = nextIndex;
-        }
+  const getThemeColor = () => {
+    switch (themeColor) {
+      case "yellow": return "#eab308";
+      case "blue": return "#3b82f6";
+      case "white": return "#ffffff";
+      default: return "#1db954"; 
     }
-
-    // Only update state if we actually advanced
-    if (tempActiveIndex > activeIndex) {
-        setActiveIndex(tempActiveIndex);
-    }
-  }, [transcript, activeIndex, scriptWords, isListening]);
+  };
+  const activeColor = getThemeColor();
 
   return (
-    <div className="min-h-screen bg-[#121212] text-white flex flex-col font-sans selection:bg-[#1db954] selection:text-white">
+    <div className={`h-[100dvh] w-full bg-[#121212] text-white flex flex-col ${fontFamily} overflow-hidden`}
+         style={{ '--selection-color': activeColor } as React.CSSProperties}>
       
-      {/* 1. Main Content Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8 max-w-4xl mx-auto w-full">
-        
-        {/* Input Area (Hidden when listening) */}
-        {!isListening && activeIndex === -1 && (
-          <div className="w-full mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <textarea
-              className="w-full bg-[#2a2a2a] text-[#b3b3b3] p-6 rounded-2xl border-none outline-none focus:ring-2 focus:ring-[#1db954] resize-none h-40 text-xl transition-all shadow-xl"
-              value={script}
-              onChange={(e) => setScript(e.target.value)}
-              placeholder="Paste your lyrics or script here..."
-            />
+      {/* Scrollbar hider */}
+      <style jsx global>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+
+      {/* 1. HEADER */}
+      <header className="flex-none p-4 md:p-6 z-50 flex justify-end relative">
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="bg-[#2a2a2a] p-3 rounded-full text-[#b3b3b3] hover:text-white border border-[#333] shadow-lg active:scale-95 transition-all"
+        >
+          {showSettings ? <X size={20} /> : <Settings2 size={20} />}
+        </button>
+
+        {showSettings && (
+          <div className="absolute right-4 top-16 w-64 bg-[#181818] border border-[#333] rounded-2xl shadow-2xl p-4 flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
+            {/* Settings content same as before, simplified for brevity */}
+             <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[#b3b3b3] uppercase">Text Size</label>
+                <div className="flex bg-[#2a2a2a] rounded-lg p-1">
+                  {(["text-xl", "text-2xl", "text-4xl", "text-6xl"] as FontSize[]).map((size, idx) => (
+                    <button key={size} onClick={() => setFontSize(size)} className={clsx("flex-1 py-2 rounded-md text-xs font-bold", fontSize === size ? "bg-[#333] text-white" : "text-[#777]")}>A{idx + 1}</button>
+                  ))}
+                </div>
+             </div>
+             <div className="space-y-2">
+                <label className="text-[10px] font-bold text-[#b3b3b3] uppercase">Color</label>
+                <div className="flex justify-between px-2">
+                  {(["green", "yellow", "blue", "white"] as ColorTheme[]).map((c) => (
+                    <button key={c} onClick={() => setThemeColor(c)} className={clsx("w-6 h-6 rounded-full border-2", themeColor === c ? "border-white scale-125" : "border-transparent")} style={{ backgroundColor: c === 'green' ? '#1db954' : c === 'yellow' ? '#eab308' : c === 'blue' ? '#3b82f6' : '#ffffff' }} />
+                  ))}
+                </div>
+             </div>
+             <div className="pt-2 border-t border-[#333] flex justify-between">
+                <span className="text-xs text-[#b3b3b3]">Auto-Scroll</span>
+                <button onClick={() => setIsAutoScroll(!isAutoScroll)} className="text-xs font-bold" style={{ color: isAutoScroll ? activeColor : '#666' }}>{isAutoScroll ? "ON" : "OFF"}</button>
+             </div>
           </div>
         )}
+      </header>
 
-        {/* The Reader Display */}
-        <div className="w-full text-4xl md:text-5xl font-bold leading-normal tracking-tight flex flex-wrap gap-x-3 gap-y-4 transition-all">
-          {scriptWords.map((word, index) => {
-            const isPast = index <= activeIndex; // It stays true now!
-            const isActive = index === activeIndex; // The exact word just spoken
-            
-            // --- STYLING LOGIC ---
-            
-            // Default "Future" style (Dimmed)
-            let wordStyle = "text-[#404040] transition-all duration-300 blur-[0.5px]";
-
-            // "Past/Spoken" style (Bright White & Locked In)
-            if (isPast) {
-              wordStyle = "text-white opacity-100 blur-0 shadow-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]";
-            }
-
-            // "Active/Just Hit" style (Green Pop)
-            if (isActive && mode === "flow") {
-               // The latest word gets the green tint briefly
-               wordStyle = "text-[#1db954] scale-110 blur-0 drop-shadow-[0_0_15px_rgba(29,185,84,0.8)]";
-            }
-
-            // Mode Overrides
-            if (mode === "highlight" && isActive) {
-               return (
-                 <span key={index} className="bg-[#1db954] text-black px-2 rounded-lg transition-all transform scale-105 shadow-[0_0_20px_rgba(29,185,84,0.6)]">
-                   {word}
-                 </span>
-               );
-            }
-
-            if (mode === "caret") {
-                return (
-                  <span key={index} className={clsx("relative transition-colors", isPast ? "text-white" : "text-[#404040]")}>
-                    {word}
-                    {isActive && (
-                      <span className="absolute -right-2 top-0 h-12 w-1 bg-[#1db954] animate-pulse rounded-full shadow-[0_0_10px_#1db954]" />
-                    )}
-                  </span>
-                )
-            }
-
-            return (
-              <span key={index} className={wordStyle}>
-                {word}
-              </span>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. Bottom "Player" Bar Controls */}
-      <div className="sticky bottom-0 bg-[#000000] border-t border-[#282828] p-6 pb-8 shadow-2xl z-50">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+      {/* 2. MAIN CONTENT (Touch-friendly inputs) */}
+      <main className="flex-1 overflow-y-auto no-scrollbar scroll-smooth relative" onClick={() => setShowSettings(false)}>
+        <div className="w-full max-w-4xl mx-auto px-4 md:px-6 py-10 flex flex-col items-center min-h-full justify-center">
           
-          {/* Progress Info */}
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 bg-red-900/50 border border-red-500/50 text-red-200 px-4 py-2 rounded-lg text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          {/* Script Input */}
+          {!isListening && activeIndex === -1 && (
+            <div className="w-full mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <textarea
+                className="w-full bg-[#2a2a2a] text-[#b3b3b3] p-4 md:p-6 rounded-2xl border-none outline-none focus:ring-1 resize-none h-40 text-lg md:text-xl transition-all shadow-xl font-sans"
+                style={{ '--tw-ring-color': activeColor } as React.CSSProperties}
+                value={script}
+                onChange={(e) => setScript(e.target.value)}
+                placeholder="Paste your script here..."
+              />
+            </div>
+          )}
+
+          {/* The Script Reader */}
+          {/* Default to text-2xl on mobile, apply user setting on desktop overrides */}
+          <div className={clsx("w-full font-bold leading-normal tracking-tight flex flex-wrap gap-x-2 gap-y-3 transition-all pb-[40vh]", fontSize)}>
+            {scriptWords.map((word, index) => {
+              const isPast = index <= activeIndex; 
+              const isActive = index === activeIndex; 
+              
+              let wordStyle = "text-[#404040] transition-all duration-300 blur-[0.5px]";
+              if (isPast) wordStyle = "text-white opacity-100 blur-0 shadow-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]";
+              if (isActive && mode === "flow") wordStyle = `scale-110 blur-0 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]`;
+
+              return (
+                <span 
+                  key={index} 
+                  ref={isActive ? activeWordRef : null} 
+                  className={isActive && mode === "flow" ? wordStyle : wordStyle}
+                  style={isActive && mode === "flow" ? { color: activeColor } : {}}
+                >
+                  {mode === "highlight" && isActive ? (
+                     <span className="text-black px-2 rounded transition-all inline-block shadow-lg" style={{ backgroundColor: activeColor }}>{word}</span>
+                  ) : mode === "caret" && isActive ? (
+                    <span className="relative text-white">{word}<span className="absolute -right-1 top-0 bottom-0 w-0.5 animate-pulse" style={{ backgroundColor: activeColor, boxShadow: `0 0 8px ${activeColor}` }}/></span>
+                  ) : (
+                    word
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      </main>
+
+      {/* 3. MOBILE-OPTIMIZED PLAYER BAR */}
+      <footer className="flex-none bg-[#000000] border-t border-[#282828] p-4 pb-8 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] z-40">
+        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          
+          {/* Progress (Hidden on small phones to save space, visible on MD+) */}
           <div className="hidden md:flex flex-col gap-1 w-[200px]">
-            <div className="text-xs text-[#b3b3b3] font-mono uppercase tracking-wider">Progress</div>
+            <div className="text-[10px] text-[#b3b3b3] font-mono uppercase tracking-wider">Progress</div>
             <div className="h-1 w-full bg-[#333] rounded-full overflow-hidden">
-                <div 
-                    className="h-full bg-[#1db954] transition-all duration-500" 
-                    style={{ width: `${((activeIndex + 1) / scriptWords.length) * 100}%` }}
-                />
+                <div className="h-full transition-all duration-500 ease-out" style={{ width: `${((activeIndex + 1) / scriptWords.length) * 100}%`, backgroundColor: activeColor }} />
             </div>
           </div>
 
-          {/* Main Controls */}
-          <div className="flex items-center gap-6">
+          {/* Main Controls (Large touch targets) */}
+          <div className="flex items-center gap-6 md:gap-8">
             <button 
                 onClick={() => { stopListening(); setActiveIndex(-1); }}
-                className="text-[#b3b3b3] hover:text-white transition-colors"
-                title="Reset"
+                className="text-[#b3b3b3] hover:text-white transition-colors p-3 hover:bg-[#222] rounded-full active:scale-90"
             >
-                <RotateCcw size={20} />
+                <RotateCcw size={24} />
             </button>
 
             {!isListening ? (
               <button
                 onClick={handleStart}
                 disabled={!hasSupport}
-                className="bg-white text-black rounded-full p-4 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 font-bold px-8 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                className="bg-white text-black rounded-full p-5 md:p-4 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 font-bold px-8 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
               >
-                <Mic fill="black" size={24} /> 
-                <span className="text-lg">Read</span>
+                <Mic fill="black" size={28} /> 
+                <span className="text-lg hidden md:inline">Read</span>
               </button>
             ) : (
               <button
                 onClick={stopListening}
-                className="bg-[#1db954] text-black rounded-full p-4 hover:scale-105 active:scale-95 transition-all shadow-[0_0_30px_rgba(29,185,84,0.4)] animate-pulse"
+                className="text-black rounded-full p-5 md:p-4 hover:scale-105 active:scale-95 transition-all shadow-lg animate-pulse"
+                style={{ backgroundColor: activeColor, boxShadow: `0 0 30px ${activeColor}66` }}
               >
-                <Square fill="black" size={24} />
+                <Square fill="black" size={28} />
               </button>
             )}
+            
+            {/* Mode Switcher (Compact on Mobile) */}
+             <div className="flex md:hidden items-center gap-1 bg-[#222] p-1 rounded-full border border-[#333]">
+                <button onClick={() => setMode("flow")} className={clsx("p-3 rounded-full", mode === "flow" ? "bg-[#333] text-white" : "text-[#777]")}><AlignLeft size={20} /></button>
+                <button onClick={() => setMode("caret")} className={clsx("p-3 rounded-full", mode === "caret" ? "bg-[#333] text-white" : "text-[#777]")}><MousePointer2 size={20} /></button>
+             </div>
           </div>
 
-          {/* View Modes */}
-          <div className="flex items-center gap-2 bg-[#222] p-1.5 rounded-full border border-[#333]">
-            <button
-              onClick={() => setMode("flow")}
-              className={clsx("p-2 rounded-full transition-all", mode === "flow" ? "bg-[#333] text-[#1db954]" : "text-[#b3b3b3] hover:text-white")}
-              title="Karaoke Flow"
-            >
-              <AlignLeft size={18} />
-            </button>
-            <button
-              onClick={() => setMode("highlight")}
-              className={clsx("p-2 rounded-full transition-all", mode === "highlight" ? "bg-[#333] text-[#1db954]" : "text-[#b3b3b3] hover:text-white")}
-              title="Block Highlight"
-            >
-              <Type size={18} />
-            </button>
-            <button
-              onClick={() => setMode("caret")}
-              className={clsx("p-2 rounded-full transition-all", mode === "caret" ? "bg-[#333] text-[#1db954]" : "text-[#b3b3b3] hover:text-white")}
-              title="Cursor Tracking"
-            >
-              <MousePointer2 size={18} />
-            </button>
+          {/* Desktop Mode Switcher */}
+          <div className="hidden md:flex items-center gap-1 bg-[#222] p-1 rounded-full border border-[#333]">
+            <button onClick={() => setMode("flow")} className={clsx("p-2 rounded-full transition-all", mode === "flow" ? "bg-[#333] text-white" : "text-[#b3b3b3] hover:text-white")} title="Flow"><AlignLeft size={18} /></button>
+            <button onClick={() => setMode("highlight")} className={clsx("p-2 rounded-full transition-all", mode === "highlight" ? "bg-[#333] text-white" : "text-[#b3b3b3] hover:text-white")} title="Highlight"><Type size={18} /></button>
+            <button onClick={() => setMode("caret")} className={clsx("p-2 rounded-full transition-all", mode === "caret" ? "bg-[#333] text-white" : "text-[#b3b3b3] hover:text-white")} title="Caret"><MousePointer2 size={18} /></button>
           </div>
 
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
