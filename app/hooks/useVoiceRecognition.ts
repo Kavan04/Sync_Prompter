@@ -1,4 +1,3 @@
-// hooks/useVoiceRecognition.ts
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // Types
@@ -38,12 +37,11 @@ export function useVoiceRecognition() {
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   
-  // Refs to handle "keep-alive" logic without triggering re-renders
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldBeListeningRef = useRef(false);
+  const isStartedRef = useRef(false);
 
   useEffect(() => {
-    // Cross-browser support (Chrome/Safari/Edge)
     const SpeechRecognitionConstructor =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
@@ -53,59 +51,48 @@ export function useVoiceRecognition() {
       return;
     }
 
-    recognitionRef.current = new SpeechRecognitionConstructor();
-    const recognition = recognitionRef.current;
+    try {
+      recognitionRef.current = new SpeechRecognitionConstructor();
+      const recognition = recognitionRef.current;
 
-    if (recognition) {
-      recognition.continuous = true; // Essential for long scripts
-      recognition.interimResults = true; // Faster feedback
-      recognition.lang = "en-US";
+      if (recognition) {
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let interimTranscript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          const alt = result[0];
-          
-          // Sensitivity Check: Ignore low-confidence murmurs (< 50% confidence)
-          // Note: 'interim' results often have low confidence, so we only filter 'final' results hard.
-          if (result.isFinal && alt.confidence < 0.5) {
-             continue; 
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+          let currentTranscript = "";
+          // We only take the most recent result segment to prevent backlog jumping
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript;
           }
-          interimTranscript += alt.transcript;
-        }
-        setTranscript(interimTranscript.toLowerCase());
-      };
-
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-        // "no-speech" is common when the user pauses. We ignore it to keep the UI clean.
-        if (event.error !== "no-speech") {
-          console.error("Speech error:", event.error);
-          // Only show fatal errors
-          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-             setError("Microphone permission denied.");
-             setIsListening(false);
-             shouldBeListeningRef.current = false;
+          if (currentTranscript.trim()) {
+            setTranscript(currentTranscript.toLowerCase());
           }
-        }
-      };
+        };
 
-      // Auto-restart logic for Safari (which stops listening after silence)
-      recognition.onend = () => {
-        if (shouldBeListeningRef.current) {
-          try {
-            recognition.start();
-          } catch (e) {
-            // Ignore errors if it's already started
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+          if (event.error === "aborted") return;
+          if (event.error !== "no-speech") {
+            console.error("Speech error:", event.error);
           }
-        } else {
-          setIsListening(false);
-        }
-      };
-    }
+        };
+
+        recognition.onstart = () => { isStartedRef.current = true; };
+        recognition.onend = () => {
+          isStartedRef.current = false;
+          if (shouldBeListeningRef.current) {
+            try { recognition.start(); } catch (e) {}
+          } else {
+            setIsListening(false);
+          }
+        };
+      }
+    } catch (e) { setError("Failed to initialize speech recognition."); }
 
     return () => {
       if (recognitionRef.current) {
+        shouldBeListeningRef.current = false;
         recognitionRef.current.abort();
       }
     };
@@ -113,34 +100,33 @@ export function useVoiceRecognition() {
 
   const startListening = useCallback(() => {
     setError(null);
+    setTranscript("");
     if (recognitionRef.current) {
       try {
         shouldBeListeningRef.current = true;
-        recognitionRef.current.start();
+        if (!isStartedRef.current) recognitionRef.current.start();
         setIsListening(true);
-      } catch (e) {
-        console.error("Start error:", e);
-      }
+      } catch (e) { console.error("Start error:", e); }
     }
   }, []);
 
   const stopListening = useCallback(() => {
+    shouldBeListeningRef.current = false;
     if (recognitionRef.current) {
-      shouldBeListeningRef.current = false;
-      recognitionRef.current.stop();
+      try { recognitionRef.current.stop(); } catch (e) {}
       setIsListening(false);
     }
   }, []);
 
-  const resetTranscript = () => setTranscript("");
+  const clearTranscript = useCallback(() => setTranscript(""), []);
 
-  return {
-    isListening,
-    transcript,
-    error,
-    startListening,
-    stopListening,
-    resetTranscript,
-    hasSupport: !!recognitionRef.current,
+  return { 
+    isListening, 
+    transcript, 
+    error, 
+    startListening, 
+    stopListening, 
+    clearTranscript, // Added for consumption
+    hasSupport: !!recognitionRef.current 
   };
 }
