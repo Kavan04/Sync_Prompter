@@ -30,7 +30,7 @@ export default function VoiceReader() {
     useVoiceRecognition();
 
   const [script, setScript] = useState(
-    "The sky above the port was the color of television, tuned to a dead channel. It was a bright cold day in April, and the clocks were striking 13."
+    "Your script goes here. We’ll handle the flow."
   );
 
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -229,10 +229,12 @@ export default function VoiceReader() {
       </main>
 
       <footer className="flex-none bg-black border-t border-[#282828] p-6 pb-10">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
           <button onClick={() => { stopListening(); setActiveIndex(-1); }} className="text-[#b3b3b3] hover:text-white p-3"><RotateCcw size={22} /></button>
           {!isListening ? (
-            <button onClick={startListening} className="bg-white text-black rounded-full py-4 px-10 font-bold flex items-center gap-2 hover:scale-105 transition-all"><Play fill="black" size={24}/>Read</button>
+            <button onClick={startListening} disabled={!hasSupport || script.trim().length === 0} className="bg-white text-black rounded-full py-4 px-10 font-bold flex items-center gap-2 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <Play fill="black" size={24}/>Read
+            </button>
           ) : (
             <button onClick={stopListening} className="rounded-full p-4 animate-pulse shadow-lg" style={{ backgroundColor: activeColor }}><Square fill="black" size={24}/></button>
           )}
