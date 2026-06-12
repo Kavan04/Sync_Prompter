@@ -27,6 +27,8 @@ interface SpeechRecognition extends EventTarget {
   start: () => void;
   stop: () => void;
   abort: () => void;
+
+  onstart: (() => void) | null;
   onresult: (event: SpeechRecognitionEvent) => void;
   onerror: (event: SpeechRecognitionErrorEvent) => void;
   onend: () => void;
@@ -52,7 +54,8 @@ export function useVoiceRecognition() {
     }
 
     try {
-      recognitionRef.current = new SpeechRecognitionConstructor();
+      //recognitionRef.current = new SpeechRecognitionConstructor();
+      recognitionRef.current = new SpeechRecognitionConstructor() as SpeechRecognition;
       const recognition = recognitionRef.current;
 
       if (recognition) {
@@ -79,10 +82,29 @@ export function useVoiceRecognition() {
         };
 
         recognition.onstart = () => { isStartedRef.current = true; };
+       
+       
+       
+        // recognition.onend = () => {
+        //   isStartedRef.current = false;
+        //   if (shouldBeListeningRef.current) {
+        //     try { recognition.start(); } catch (e) {}
+        //   } else {
+        //     setIsListening(false);
+        //   }
+        // };
+
         recognition.onend = () => {
           isStartedRef.current = false;
+        
           if (shouldBeListeningRef.current) {
-            try { recognition.start(); } catch (e) {}
+            setTimeout(() => {
+              try {
+                recognition.start();
+              } catch (e) {
+                console.error(e);
+              }
+            }, 300);
           } else {
             setIsListening(false);
           }
