@@ -15,11 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SyncPrompter",
   description: "The intelligent voice-activated teleprompter.",
-  icons: {
-    icon: "/Image.png", // This points to public/Image.png
-    shortcut: "/favicon.ico",
-    apple: "/Image.png",
-  },
 };
 
 export default function RootLayout({
