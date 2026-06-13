@@ -67,13 +67,13 @@ Built for content creators, educators, and public speakers, SyncPrompter uses ad
 ## 📸 Screenshots
 
 ### Home Page
-*(Add screenshot of the landing page and editor here)*
+![Home Page](images/home2.png)
 
 ### Core Feature
-*(Add screenshot of the real-time tracking interface here)*
+![Voice Tracking](images/home1.png)
 
 ### Settings & Customization
-*(Add screenshot of the settings menu and theme selection here)*
+![Settings Panel](images/accessibility-feat.png)
 
 ---
 
