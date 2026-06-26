@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +18,21 @@ export const metadata: Metadata = {
   description: "The intelligent voice-activated teleprompter.",
 };
 
+// export default function RootLayout({
+//   children,
+// }: Readonly<{
+//   children: React.ReactNode;
+// }>) {
+//   return (
+//     <html lang="en">
+//       <body
+//         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+//       >
+//         {children}
+//       </body>
+//     </html>
+//   );
+// }
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,6 +44,8 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        {/* Load Tally widget script globally */}
+        <Script src="https://tally.so/widgets/embed.js" strategy="lazyOnload" />
       </body>
     </html>
   );

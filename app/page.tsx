@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
 import { 
   Mic, Square, AlignLeft, MousePointer2, Type, RotateCcw, 
-  Settings2, X, AlertTriangle, Play
+  Settings2, X, AlertTriangle, Play, MessageSquare
 } from "lucide-react";
 import { clsx } from "clsx";
 import levenshtein from "fast-levenshtein";
@@ -171,6 +171,28 @@ export default function VoiceReader() {
     }
   }, [transcript, activeIndex, scriptWords, isListening, clearTranscript]);
 
+  // --- Tally Popup Handler ---
+  const openFeedbackForm = () => {
+    if (typeof window !== "undefined" && (window as any).Tally) {
+      (window as any).Tally.openPopup('0QlVWj', {
+        layout: 'modal',
+        width: 700,
+        autoClose: 5000,
+        emoji: {
+          text: '👋',
+          animation: 'wave'
+        },
+        hiddenFields: {
+          // Passing context to Tally
+          theme: themeColor,
+          size: fontSize
+        }
+      });
+    } else {
+      console.warn("Tally script hasn't loaded yet.");
+    }
+  };
+
   const activeColor = themeColor === "yellow" ? "#eab308" : themeColor === "blue" ? "#3b82f6" : themeColor === "white" ? "#ffffff" : "#1db954";
 
   return (
@@ -181,9 +203,18 @@ export default function VoiceReader() {
              <img src="/Image.png" alt="Logo" className="h-9 md:h-10" />
              <h1 className="hidden xs:block text-lg font-extrabold">Sync<span className="text-[#b3b3b3]">Prompter</span>.</h1>
           </Link>
-          <button onClick={() => setShowSettings(!showSettings)} className="bg-[#2a2a2a] p-3 rounded-full text-[#b3b3b3] hover:text-white">
-            {showSettings ? <X size={18} /> : <Settings2 size={18} />}
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={openFeedbackForm} 
+              className="bg-[#2a2a2a] px-4 py-2 rounded-full text-xs font-bold text-[#b3b3b3] hover:text-white flex items-center gap-2 transition-colors"
+            >
+              <MessageSquare size={16} />
+              <span className="hidden xs:inline">Feedback</span>
+            </button>
+            <button onClick={() => setShowSettings(!showSettings)} className="bg-[#2a2a2a] p-3 rounded-full text-[#b3b3b3] hover:text-white">
+              {showSettings ? <X size={18} /> : <Settings2 size={18} />}
+            </button>
+          </div>
         </div>
       </header>
 
