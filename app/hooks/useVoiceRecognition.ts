@@ -34,14 +34,17 @@ interface SpeechRecognition extends EventTarget {
   onend: () => void;
 }
 
+const MAX_RESTART_ATTEMPTS = 5;
+
 export function useVoiceRecognition() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
-  
+
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldBeListeningRef = useRef(false);
   const isStartedRef = useRef(false);
+  const restartAttemptsRef = useRef(0);
 
   useEffect(() => {
     const SpeechRecognitionConstructor =
@@ -54,7 +57,6 @@ export function useVoiceRecognition() {
     }
 
     try {
-      //recognitionRef.current = new SpeechRecognitionConstructor();
       recognitionRef.current = new SpeechRecognitionConstructor() as SpeechRecognition;
       const recognition = recognitionRef.current;
 
@@ -81,23 +83,22 @@ export function useVoiceRecognition() {
           }
         };
 
-        recognition.onstart = () => { isStartedRef.current = true; };
-       
-       
-       
-        // recognition.onend = () => {
-        //   isStartedRef.current = false;
-        //   if (shouldBeListeningRef.current) {
-        //     try { recognition.start(); } catch (e) {}
-        //   } else {
-        //     setIsListening(false);
-        //   }
-        // };
+        recognition.onstart = () => {
+          isStartedRef.current = true;
+          restartAttemptsRef.current = 0;
+        };
 
         recognition.onend = () => {
           isStartedRef.current = false;
-        
+
           if (shouldBeListeningRef.current) {
+            if (restartAttemptsRef.current >= MAX_RESTART_ATTEMPTS) {
+              shouldBeListeningRef.current = false;
+              setIsListening(false);
+              setError("Speech recognition stopped unexpectedly. Please try again.");
+              return;
+            }
+            restartAttemptsRef.current += 1;
             setTimeout(() => {
               try {
                 recognition.start();
@@ -125,6 +126,7 @@ export function useVoiceRecognition() {
     setTranscript("");
     if (recognitionRef.current) {
       try {
+        restartAttemptsRef.current = 0;
         shouldBeListeningRef.current = true;
         if (!isStartedRef.current) recognitionRef.current.start();
         setIsListening(true);

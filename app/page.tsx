@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useVoiceRecognition } from "./hooks/useVoiceRecognition";
 import { 
   Mic, Square, AlignLeft, MousePointer2, Type, RotateCcw, 
@@ -15,15 +16,36 @@ type FontSize = "text-xl" | "text-2xl" | "text-4xl" | "text-6xl";
 type FontFamily = "font-sans" | "font-serif" | "font-mono";
 type ColorTheme = "green" | "yellow" | "blue" | "white";
 
+const UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
 const numberToWords = (numStr: string): string => {
-  const units = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
-  const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-  const n = parseInt(numStr);
+  const n = parseInt(numStr, 10);
   if (isNaN(n)) return numStr;
-  if (n < 20) return units[n];
-  if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? units[n % 10] : "");
+  if (n < 20) return UNITS[n];
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 !== 0 ? UNITS[n % 10] : "");
   return numStr;
 };
+
+const normalizeWord = (w: string) => {
+  const clean = w.toLowerCase().replace(/[^a-z0-9]/gi, "");
+  if (/^\d+$/.test(clean)) return numberToWords(clean);
+  return clean;
+};
+
+// True non-lexical filler sounds only — common pronouns/words like "i", "you",
+// "so" are real script content and must not be stripped from the spoken stream.
+const FILLER = new Set(["um", "uh", "erm", "hmm", "mhm"]);
+
+const MATCH_SHORT_WORD_THRESHOLD = 4;
+const MATCH_SHORT_THRESHOLD = 0.95;
+const MATCH_LONG_THRESHOLD = 0.82;
+const JUMP_WINDOW = 8;
+const JUMP_MIN_WORD_LENGTH = 5;
+const JUMP_THRESHOLD = 0.9;
+
+const similarity = (a: string, b: string) =>
+  a === b ? 1 : 1 - levenshtein.get(a, b) / Math.max(a.length, b.length);
 
 export default function VoiceReader() {
   const { isListening, transcript, error, startListening, stopListening, clearTranscript, hasSupport } =
@@ -45,6 +67,9 @@ export default function VoiceReader() {
   const wakeLockRef = useRef<any>(null);
 
   const scriptWords = useMemo(() => script.split(/\s+/).filter(w => w.length > 0), [script]);
+
+  // Normalized once per script edit instead of on every transcript update.
+  const cleanScript = useMemo(() => scriptWords.map(normalizeWord), [scriptWords]);
 
   const scriptChunks = useMemo(() => {
     const chunks = [];
@@ -106,17 +131,8 @@ export default function VoiceReader() {
   // --- ANCHOR-BASED MATCHING ENGINE ---
   useEffect(() => {
     if (!isListening || !transcript) return;
-    
-    const FILLER = new Set(["um", "uh", "like", "actually", "basically", "so", "you", "know", "i", "mean"]);
-    
-    const normalize = (w: string) => {
-      const clean = w.toLowerCase().replace(/[^a-z0-9]/gi, "");
-      if (/^\d+$/.test(clean)) return numberToWords(clean);
-      return clean;
-    };
 
-    const spokenWords = transcript.split(/\s+/).map(normalize).filter(w => w && !FILLER.has(w));
-    const cleanScript = scriptWords.map(normalize);
+    const spokenWords = transcript.split(/\s+/).map(normalizeWord).filter(w => w && !FILLER.has(w));
 
     let tempIndex = activeIndex;
     let matchOccurred = false;
@@ -126,40 +142,45 @@ export default function VoiceReader() {
       const nextIdx = tempIndex + 1;
       if (nextIdx < cleanScript.length) {
         const scriptWord = cleanScript[nextIdx];
-        
-        // High-strictness for short words, fuzzy allowed for long words
-        const isShort = scriptWord.length <= 4;
-        const score = scriptWord === spokenWord ? 1 : 1 - (levenshtein.get(scriptWord, spokenWord) / Math.max(scriptWord.length, spokenWord.length));
-        
-        const threshold = isShort ? 0.95 : 0.82; // Short words must be nearly exact
+        const isShort = scriptWord.length <= MATCH_SHORT_WORD_THRESHOLD;
+        const threshold = isShort ? MATCH_SHORT_THRESHOLD : MATCH_LONG_THRESHOLD;
 
-        if (score >= threshold) {
+        if (similarity(scriptWord, spokenWord) >= threshold) {
           tempIndex = nextIdx;
           matchOccurred = true;
-          continue; 
+          continue;
+        }
+
+        // 1b. TOLERATE A SINGLE SKIPPED SHORT SCRIPT WORD (e.g. "a", "the")
+        // that the speaker glossed over or the recognizer merged.
+        const skipIdx = nextIdx + 1;
+        if (scriptWord.length <= MATCH_SHORT_WORD_THRESHOLD && skipIdx < cleanScript.length) {
+          const afterSkip = cleanScript[skipIdx];
+          const skipThreshold = afterSkip.length <= MATCH_SHORT_WORD_THRESHOLD ? MATCH_SHORT_THRESHOLD : MATCH_LONG_THRESHOLD;
+          if (similarity(afterSkip, spokenWord) >= skipThreshold) {
+            tempIndex = skipIdx;
+            matchOccurred = true;
+            continue;
+          }
         }
       }
 
       // 2. SEARCH FOR JUMP (Only for "Strong Words")
       // We only allow jumping forward if the word is long and unique enough
-      if (spokenWord.length >= 5) {
-        const JUMP_WINDOW = 8; // Small window to prevent line-skipping
+      if (spokenWord.length >= JUMP_MIN_WORD_LENGTH) {
         for (let i = 2; i <= JUMP_WINDOW; i++) {
           const idx = tempIndex + i;
           if (idx >= cleanScript.length) break;
-          
+
           const scriptWord = cleanScript[idx];
           // Check if this word is a duplicate in the immediate area
           const occurrences = cleanScript.slice(tempIndex + 1, tempIndex + JUMP_WINDOW + 2).filter(w => w === scriptWord).length;
-          
+
           // Only jump if the word is unique in the local window (occurrence === 1)
-          if (occurrences === 1) {
-            const score = 1 - (levenshtein.get(scriptWord, spokenWord) / Math.max(scriptWord.length, spokenWord.length));
-            if (score > 0.90) { // Very high threshold for jumping
-              tempIndex = idx;
-              matchOccurred = true;
-              break;
-            }
+          if (occurrences === 1 && similarity(scriptWord, spokenWord) > JUMP_THRESHOLD) {
+            tempIndex = idx;
+            matchOccurred = true;
+            break;
           }
         }
       }
@@ -169,7 +190,7 @@ export default function VoiceReader() {
       setActiveIndex(tempIndex);
       clearTranscript();
     }
-  }, [transcript, activeIndex, scriptWords, isListening, clearTranscript]);
+  }, [transcript, activeIndex, cleanScript, isListening, clearTranscript]);
 
   // --- Tally Popup Handler ---
   const openFeedbackForm = () => {
@@ -200,7 +221,7 @@ export default function VoiceReader() {
       <header className="flex-none bg-[#121212]/90 backdrop-blur-sm border-b border-[#282828] p-4 md:p-5 z-50">
         <div className="max-w-[1800px] mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-             <img src="/Image.png" alt="Logo" className="h-9 md:h-10" />
+             <Image src="/Image.png" alt="Logo" width={460} height={80} priority className="h-9 md:h-10 w-auto" />
              <h1 className="hidden xs:block text-lg font-extrabold">Sync<span className="text-[#b3b3b3]">Prompter</span>.</h1>
           </Link>
           <div className="flex items-center gap-3">
