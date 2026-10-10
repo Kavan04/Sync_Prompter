@@ -99,26 +99,37 @@ The matching engine runs in the browser, but speech recognition is not on-device
 
 ## 🎚 Matching Rules
 
-These are the exact rules in `app/lib/matcher.ts`. Change them there and here together.
+These are the exact rules in `app/lib/matcher.ts` and `app/lib/numberWords.ts`. Change them there and here together.
 
 **Word comparison**
-* Words are compared in lower case with punctuation removed. Hyphens are removed too, so "e-mail" matches "email". Tokens with no letters or digits (such as a spaced em dash) are ignored.
-* Similarity = 1 − (edit distance ÷ length of the longer word).
+* Words are compared in lower case with every character other than a–z and 0–9 removed. Punctuation and hyphens are removed, so "e-mail" matches "email". Accented letters are removed too, so "café" is compared as "caf". Tokens with no letters or digits (such as a spaced em dash) are ignored.
+* Similarity = 1 − (edit distance ÷ length of the longer word), on the compared forms.
 
 **Thresholds**
+
+The threshold depends on the length of the script word.
 
 | Script word length | Required similarity | What a spoken word needs |
 |---|---|---|
 | 4 letters or fewer | ≥ 0.95 | Exact match |
-| 5 letters | ≥ 0.82 | Exact match (one edit gives 0.80) |
-| 6–11 letters | ≥ 0.82 | Up to one edit |
-| 12 letters or more | ≥ 0.82 | Up to two edits (more for longer words) |
+| 5 letters or more | ≥ 0.82 | No more edits than the table below allows |
+
+The allowance uses the length of the longer of the two words:
+
+| Longer word | Edits allowed |
+|---|---|
+| 5 letters | 0 |
+| 6–11 letters | 1 |
+| 12–16 letters | 2 |
+| 17–22 letters | 3 |
+
+So a 5-letter script word takes one edit only against a 6-letter spoken word: "house" matches "houses", but "horse" does not match "house".
 
 **Skipped and jumped words**
-* A short script word (4 letters or fewer) that you leave out is skipped. The tracker can skip a run of short words, up to 8 positions ahead. Beyond the first skipped word, the target must be unique within that window.
-* A long script word (5 letters or more) that you leave out is not skipped. The tracker waits until a later word matches, so it can stall on a skipped long word.
-* A spoken word of 5 letters or more can jump ahead up to 8 words to a script word that is unique in that window and has similarity above 0.90.
-* The filler sounds "um", "uh", "erm", "hmm" and "mhm" are ignored.
+* A short script word (4 letters or fewer) that you leave out is skipped. Skipping one short word is always allowed. Skipping more needs the word the tracker lands on to be unique in the words it searches. The skip reaches up to 8 positions ahead of the current word.
+* A long script word (5 letters or more) that you leave out is not skipped over, so the tracker can stall on it until the word itself is spoken or a later word is reached by the jump rule.
+* A spoken word of 5 letters or more can jump ahead 2 to 8 words to a script word that is unique in the words it searches and has similarity above 0.90.
+* The filler sounds "um", "uh", "erm", "hmm" and "mhm" in the speech are ignored.
 
 **Number Forms**
 * Digits and spoken words are compared in the same form. "100" matches "one hundred", "21" matches "twenty one", "1,000" matches "one thousand", "3.5" matches "three point five", "2026" matches "twenty twenty six", and "21st" matches "twenty first".
