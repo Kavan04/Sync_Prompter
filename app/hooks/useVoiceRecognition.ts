@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 // Types
 interface SpeechRecognitionEvent extends Event {
@@ -33,124 +33,206 @@ interface SpeechRecognition extends EventTarget {
   onerror: (event: SpeechRecognitionErrorEvent) => void;
   onend: () => void;
 }
+type SpeechRecognitionConstructor = new () => SpeechRecognition;
+interface SpeechRecognitionWindow {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
 
-const MAX_RESTART_ATTEMPTS = 5;
+const UNSUPPORTED_MESSAGE = "Browser not supported. Please use Chrome or Safari.";
+const START_FAILED_MESSAGE = "Speech recognition could not start. Press Read to try again.";
+const RESTART_FAILED_MESSAGE = "Speech recognition could not restart. Press Read to try again.";
+const UNEXPECTED_STOP_MESSAGE = "Speech recognition stopped unexpectedly. Please try again.";
 
-export function useVoiceRecognition() {
+// Errors that stop listening at once. Retrying them would fail the same way.
+const FATAL_ERROR_MESSAGES: Record<string, string> = {
+  "not-allowed": "Microphone access was blocked. Allow the microphone for this site, then press Read.",
+  "service-not-allowed": "The browser's speech service is not allowed here. Try Chrome on a secure (https) page.",
+  "audio-capture": "No microphone was found, or it could not be used. Check your microphone, then press Read.",
+  network: "Speech recognition lost its network connection to the browser's speech service. Check your connection, then press Read.",
+};
+
+// Sessions that end without ever starting, in a row, before listening gives up.
+const MAX_CONSECUTIVE_FAILURES = 5;
+const RESTART_DELAY_MS = 300;
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === "undefined") return null;
+  const speechWindow = window as Window & SpeechRecognitionWindow;
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+}
+
+const noopSubscribe = () => () => {};
+
+type SupportState = "unknown" | "supported" | "unsupported";
+
+// "unknown" on the server, so the first render matches the server output.
+const getSupportState = (): SupportState => (getSpeechRecognitionConstructor() ? "supported" : "unsupported");
+
+// Calls onWords with the words that are new since the previous result. The
+// recognizer re-sends the in-progress hypothesis, so words that were already
+// reported in this session are left out.
+export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const support = useSyncExternalStore(noopSubscribe, getSupportState, (): SupportState => "unknown");
+  const hasSupport = support === "supported";
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const onWordsRef = useRef(onWords);
   const shouldBeListeningRef = useRef(false);
-  const isStartedRef = useRef(false);
-  const restartAttemptsRef = useRef(0);
+  // start() has been called and onend has not fired yet.
+  const sessionActiveRef = useRef(false);
+  // onstart has fired for the current start() call.
+  const sessionStartedRef = useRef(false);
+  const failedStartsRef = useRef(0);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Words already reported for each result index in the current session.
+  const reportedRef = useRef(new Map<number, number>());
 
   useEffect(() => {
-    const SpeechRecognitionConstructor =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+    onWordsRef.current = onWords;
+  }, [onWords]);
 
-    if (!SpeechRecognitionConstructor) {
-      setError("Browser not supported. Please use Chrome or Safari.");
-      return;
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current !== null) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
     }
+  }, []);
 
+  const stopWithError = useCallback(
+    (message: string) => {
+      shouldBeListeningRef.current = false;
+      clearRestartTimer();
+      setIsListening(false);
+      setError(message);
+    },
+    [clearRestartTimer]
+  );
+
+  // Returns false when the browser refuses to start the recognizer.
+  const beginSession = useCallback((): boolean => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return false;
+    sessionActiveRef.current = true;
+    sessionStartedRef.current = false;
     try {
-      recognitionRef.current = new SpeechRecognitionConstructor() as SpeechRecognition;
-      const recognition = recognitionRef.current;
+      recognition.start();
+      return true;
+    } catch (e) {
+      sessionActiveRef.current = false;
+      console.error("Start error:", e);
+      return false;
+    }
+  }, []);
 
-      if (recognition) {
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "en-US";
+  const scheduleRestart = useCallback(() => {
+    clearRestartTimer();
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      if (!shouldBeListeningRef.current) return;
+      if (!beginSession()) stopWithError(RESTART_FAILED_MESSAGE);
+    }, RESTART_DELAY_MS);
+  }, [beginSession, clearRestartTimer, stopWithError]);
 
-        recognition.onresult = (event: SpeechRecognitionEvent) => {
-          let currentTranscript = "";
-          // We only take the most recent result segment to prevent backlog jumping
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            currentTranscript += event.results[i][0].transcript;
-          }
-          if (currentTranscript.trim()) {
-            setTranscript(currentTranscript.toLowerCase());
-          }
-        };
+  useEffect(() => {
+    const Constructor = getSpeechRecognitionConstructor();
+    if (!Constructor) return;
 
-        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-          if (event.error === "aborted") return;
-          if (event.error !== "no-speech") {
-            console.error("Speech error:", event.error);
-          }
-        };
+    // If the constructor throws, the error reaches the page's error boundary.
+    const recognition = new Constructor();
 
-        recognition.onstart = () => {
-          isStartedRef.current = true;
-          restartAttemptsRef.current = 0;
-        };
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognitionRef.current = recognition;
 
-        recognition.onend = () => {
-          isStartedRef.current = false;
+    recognition.onstart = () => {
+      sessionStartedRef.current = true;
+      reportedRef.current.clear();
+      if (shouldBeListeningRef.current) setIsListening(true);
+    };
 
-          if (shouldBeListeningRef.current) {
-            if (restartAttemptsRef.current >= MAX_RESTART_ATTEMPTS) {
-              shouldBeListeningRef.current = false;
-              setIsListening(false);
-              setError("Speech recognition stopped unexpectedly. Please try again.");
-              return;
-            }
-            restartAttemptsRef.current += 1;
-            setTimeout(() => {
-              try {
-                recognition.start();
-              } catch (e) {
-                console.error(e);
-              }
-            }, 300);
-          } else {
-            setIsListening(false);
-          }
-        };
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const tokens: string[] = [];
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const words = event.results[i][0].transcript.split(/\s+/).filter(word => word.length > 0);
+        const reported = reportedRef.current.get(i) ?? 0;
+        tokens.push(...words.slice(reported));
+        reportedRef.current.set(i, words.length);
       }
-    } catch (e) { setError("Failed to initialize speech recognition."); }
+      if (tokens.length === 0) return;
+
+      failedStartsRef.current = 0;
+      if (shouldBeListeningRef.current) onWordsRef.current(tokens);
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === "aborted" || event.error === "no-speech") return;
+      console.error("Speech error:", event.error);
+      const message = FATAL_ERROR_MESSAGES[event.error];
+      if (message) stopWithError(message);
+    };
+
+    recognition.onend = () => {
+      sessionActiveRef.current = false;
+      if (!shouldBeListeningRef.current) {
+        setIsListening(false);
+        return;
+      }
+      // A session that never started counts against the restart limit.
+      // Sessions that start and then end (silence) do not.
+      if (!sessionStartedRef.current) failedStartsRef.current += 1;
+      if (failedStartsRef.current >= MAX_CONSECUTIVE_FAILURES) {
+        stopWithError(UNEXPECTED_STOP_MESSAGE);
+        return;
+      }
+      scheduleRestart();
+    };
 
     return () => {
-      if (recognitionRef.current) {
-        shouldBeListeningRef.current = false;
-        recognitionRef.current.abort();
+      shouldBeListeningRef.current = false;
+      clearRestartTimer();
+      sessionActiveRef.current = false;
+      recognitionRef.current = null;
+      try {
+        recognition.abort();
+      } catch {
+        // Already stopped.
       }
     };
-  }, []);
+  }, [clearRestartTimer, scheduleRestart, stopWithError]);
 
   const startListening = useCallback(() => {
+    if (!recognitionRef.current) return;
     setError(null);
-    setTranscript("");
-    if (recognitionRef.current) {
-      try {
-        restartAttemptsRef.current = 0;
-        shouldBeListeningRef.current = true;
-        if (!isStartedRef.current) recognitionRef.current.start();
-        setIsListening(true);
-      } catch (e) { console.error("Start error:", e); }
-    }
-  }, []);
+    shouldBeListeningRef.current = true;
+    failedStartsRef.current = 0;
+    clearRestartTimer();
+    // Already starting or running. onstart and onend update the state.
+    if (sessionActiveRef.current) return;
+    if (!beginSession()) stopWithError(START_FAILED_MESSAGE);
+  }, [beginSession, clearRestartTimer, stopWithError]);
 
   const stopListening = useCallback(() => {
     shouldBeListeningRef.current = false;
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
-      setIsListening(false);
+    clearRestartTimer();
+    if (sessionActiveRef.current) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // Already stopped.
+      }
     }
-  }, []);
+    setIsListening(false);
+  }, [clearRestartTimer]);
 
-  const clearTranscript = useCallback(() => setTranscript(""), []);
-
-  return { 
-    isListening, 
-    transcript, 
-    error, 
-    startListening, 
-    stopListening, 
-    clearTranscript, // Added for consumption
-    hasSupport: !!recognitionRef.current 
+  return {
+    isListening,
+    error: error ?? (support === "unsupported" ? UNSUPPORTED_MESSAGE : null),
+    hasSupport,
+    startListening,
+    stopListening,
   };
 }

@@ -95,7 +95,7 @@ describe("matching engine", () => {
   it("keeps the tracker moving after two skipped short words (M5, M6)", () => {
     startSession("we need a good plan now");
 
-    expect(speak("we need plan now", true)).toBe(4);
+    expect(speak("we need plan now", true)).toBe(5);
   });
 
   it("keeps the existing threshold: a one-letter misspelling of a 5-letter word does not advance (M5 threshold)", () => {
@@ -113,6 +113,14 @@ describe("matching engine", () => {
   // Each spoken word is its own result, so the test checks the position after
   // every word, not only the last one. A number word that is skipped and then
   // jumped over would still land on the right final word, and hide the bug.
+  it("keeps a single spaced em-dash tolerated (M16)", () => {
+    startSession("yes — ok now");
+
+    const indices = ["yes", "ok", "now"].map(word => speak(word, true));
+
+    expect(indices).toEqual([0, 2, 3]);
+  });
+
   it.each([
     ["in 100 days", "in one hundred days", [0, 1, 1, 2]],
     ["I am 21 years old", "i am twenty one years old", [0, 1, 2, 2, 3, 4]],
@@ -127,6 +135,55 @@ describe("matching engine", () => {
     const indices = spoken.split(" ").map(word => speak(word, true));
 
     expect(indices).toEqual(expected);
+  });
+
+  // Behaviour the audit marks as passing. These must keep passing.
+  it("keeps a word that is nearly right within the threshold for its length (M3)", () => {
+    startSession("the performance was great");
+
+    const indices = ["the", "performanse", "was", "great"].map(word => speak(word, true));
+
+    expect(indices).toEqual([0, 1, 2, 3]);
+  });
+
+  it("keeps a single skipped word tolerated (M7)", () => {
+    startSession("we need a plan now");
+
+    const indices = ["we", "need", "plan", "now"].map(word => speak(word, true));
+
+    expect(indices).toEqual([0, 1, 3, 4]);
+  });
+
+  it("does not jump to a repeated long word (M8 guard)", () => {
+    startSession("start one two three calibrate four calibrate five");
+
+    const indices = ["start", "calibrate"].map(word => speak(word, true));
+
+    expect(indices).toEqual([0, 0]);
+  });
+
+  it("does not skip past short words to a repeated word (M8 guard, short words in between)", () => {
+    startSession("start a an of in calibrate four calibrate five");
+
+    const indices = ["start", "calibrate"].map(word => speak(word, true));
+
+    expect(indices).toEqual([0, 0]);
+  });
+
+  it("ignores empty, punctuation-only and filler speech (M11)", () => {
+    startSession("Hello there");
+
+    const indices = ["", "... —", "um uh"].map(text => speak(text, true));
+
+    expect(indices).toEqual([-1, -1, -1]);
+  });
+
+  it("does not move backwards and jumps forward only on a unique long word (M12)", () => {
+    startSession("alpha bravo charlie delta");
+
+    const indices = ["charlie", "bravo"].map(word => speak(word, true));
+
+    expect(indices).toEqual([2, 2]);
   });
 
   it("moves the active word when a word anywhere in the script is clicked (M8)", () => {
