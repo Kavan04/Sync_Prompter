@@ -90,6 +90,28 @@ describe("matching engine", () => {
     expect(speak("big performance then we go")).toBe(5);
   });
 
+  it("matches a hyphenated number against the script's digits and advances past it", () => {
+    startSession("21 done");
+
+    expect(speak("twenty-one", true)).toBe(0);
+    expect(speak("done", true)).toBe(1);
+  });
+
+  it("matches a hyphenated number against the script's spelled-out compound", () => {
+    startSession("thirty-five done");
+
+    expect(speak("35", true)).toBe(0);
+    expect(speak("done", true)).toBe(1);
+  });
+
+  it("does not replay a hyphenated phrase when the recognizer revises it to spaced words", () => {
+    startSession("twenty-one twenty two");
+
+    expect(speak("twenty-one")).toBe(0);
+    expect(speak("twenty one")).toBe(0);
+    expect(speak("twenty one twenty two", true)).toBe(2);
+  });
+
   it("does not replay a number when the recognizer revises its words to digits", () => {
     startSession("21 21 done");
 

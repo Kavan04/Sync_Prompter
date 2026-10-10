@@ -38,6 +38,13 @@ describe("wordKeys", () => {
     expect(wordKeys("1,000")).toEqual(["one", "thousand"]);
   });
 
+  it("splits a hyphenated compound of number words into the same words as its spaced form", () => {
+    expect(wordKeys("twenty-one")).toEqual(["twenty", "one"]);
+    expect(wordKeys("thirty-five")).toEqual(["thirty", "five"]);
+    expect(wordKeys("twenty-first")).toEqual(["twenty", "first"]);
+    expect(wordKeys("twenty-one")).toEqual(wordKeys("21"));
+  });
+
   it("removes hyphens so a hyphenated word matches its joined form", () => {
     expect(wordKeys("e-mail")).toEqual(["email"]);
     expect(advanceMatch(1, ["email"], buildMatchKeys(["send", "an", "e-mail", "today"]))).toBe(2);

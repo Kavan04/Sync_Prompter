@@ -102,7 +102,7 @@ The matching engine runs in the browser, but speech recognition is not on-device
 These are the exact rules in `app/lib/matcher.ts` and `app/lib/numberWords.ts`. Change them there and here together.
 
 **Word comparison**
-* Words are compared in lower case with every character other than a–z and 0–9 removed. Punctuation and hyphens are removed, so "e-mail" matches "email". Accented letters are removed too, so "café" is compared as "caf". Tokens with no letters or digits (such as a spaced em dash) are ignored.
+* Words are compared in lower case with every character other than a–z and 0–9 removed. Punctuation and hyphens are removed, so "e-mail" matches "email". A hyphenated compound of number words, such as "twenty-one", is matched as its separate words, the same as "twenty one" and "21". Accented letters are removed too, so "café" is compared as "caf". Tokens with no letters or digits (such as a spaced em dash) are ignored.
 * Similarity = 1 − (edit distance ÷ length of the longer word), on the compared forms.
 
 **Thresholds**
@@ -163,7 +163,7 @@ This section lists only what the focused test run for this change checked. Anyth
 
 **Built and tested** (jsdom tests with a fake Web Speech recognizer, not a live microphone)
 * Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. A revised or shorter hypothesis is aligned with the words already reported, and only the words after its last aligned word are matched. A revision that changes the case, the punctuation or the number form of reported words (for example "twenty one" to "21") does not replay them.
-* Matching: skipped short words do not freeze the tracker. A spaced em dash does not stall it. Hyphens are removed, so "e-mail" matches "email". The number forms in [Matching Rules](#-matching-rules) match word by word.
+* Matching: skipped short words do not freeze the tracker. A spaced em dash does not stall it. Hyphens are removed, so "e-mail" matches "email", and "twenty-one" matches "twenty one" and "21". The number forms in [Matching Rules](#-matching-rules) match word by word.
 * Click-to-jump: clicking a word moves the tracker to it. Clicking does not replay speech that was not matched.
 * Speech lifecycle: `not-allowed`, `service-not-allowed`, `audio-capture` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A restart or a first `start()` that throws stops listening and shows an error. Listening is shown only once the session has started. Consecutive sessions that never start count toward a limit of five, after which listening stops with a message. The count is reset when recognized speech arrives or Read is pressed, not when a session starts.
 * Wake lock: a lock that resolves after Stop is released (jsdom test with a mocked Wake Lock API).
@@ -172,7 +172,7 @@ This section lists only what the focused test run for this change checked. Anyth
 * A render failure shows a recovery message instead of a blank page.
 
 **Regression tests**
-The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 77 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
+The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 82 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
 * `tests/voice-reader.test.tsx`: the page, driven through a fake Web Speech recognizer.
 * `tests/matcher.test.ts`: the matcher and number forms, including hyphenated words.
 * `tests/unreported-words.test.ts`: the revision alignment, including a seeded property test over 200 sessions of random revisions.

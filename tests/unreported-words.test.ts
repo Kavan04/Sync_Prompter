@@ -54,7 +54,7 @@ const wordConcept = (n: number): Concept => {
 };
 
 const numberConcept = ([digits, spoken]: [string, string[]]): Concept => ({
-  forms: [[digits], spoken, spoken.map(capitalize)],
+  forms: [[digits], spoken, spoken.map(capitalize), [spoken.join("-")], [spoken.map(capitalize).join("-")]],
   keys: spoken,
 });
 
@@ -126,6 +126,10 @@ describe("unreportedWords", () => {
 
   it("emits nothing when a reported number is revised from words to digits", () => {
     expect(unreportedWords(["twenty", "one"], ["21"])).toEqual([]);
+  });
+
+  it("emits nothing when a reported hyphenated number is revised to spaced words", () => {
+    expect(unreportedWords(["twenty-one"], ["twenty", "one"])).toEqual([]);
   });
 
   it("emits only the new number when a revised number is followed by another", () => {

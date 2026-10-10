@@ -1,5 +1,5 @@
 import levenshtein from "fast-levenshtein";
-import { numberWords, ordinalWords } from "./numberWords";
+import { isSpokenNumberPart, numberWords, ordinalWords } from "./numberWords";
 
 // Matching thresholds. README.md documents these values; change them there too.
 // Words of MATCH_SHORT_WORD_THRESHOLD letters or fewer need an exact match.
@@ -36,6 +36,9 @@ const cleanWord = (token: string) => token.toLowerCase().replace(/[^a-z0-9]/g, "
 // Spoken or written forms of one whitespace-separated token, as matchable words.
 export function wordKeys(token: string): string[] {
   const lower = token.toLowerCase().replace(/(\d),(?=\d)/g, "$1");
+
+  const parts = lower.split("-");
+  if (parts.length > 1 && parts.every(isSpokenNumberPart)) return parts;
 
   const decimal = /^\D*(\d+)\.(\d+)\D*$/.exec(lower);
   if (decimal) {

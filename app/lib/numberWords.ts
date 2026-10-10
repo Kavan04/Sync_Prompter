@@ -43,3 +43,16 @@ export function ordinalWords(n: number): string[] | null {
   }
   return null;
 }
+
+const NUMBER_PARTS = new Set([
+  ...UNITS,
+  ...TENS.filter(Boolean),
+  ...ORDINAL_UNITS,
+  ...ORDINAL_TENS.filter(Boolean),
+  "hundred",
+  "thousand",
+  "oh",
+]);
+
+// True for a single word that a spoken number is made of, such as "twenty" or "first".
+export const isSpokenNumberPart = (word: string) => NUMBER_PARTS.has(word);
