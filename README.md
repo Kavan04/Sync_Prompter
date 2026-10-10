@@ -151,7 +151,7 @@ These are the exact rules in `app/lib/matcher.ts`. Change them there and here to
 This section lists only what the focused test run for this change checked. Anything not listed under "Built and tested" is not claimed.
 
 **Built and tested** (jsdom tests with a fake Web Speech recognizer, not a live microphone)
-* Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. A revised hypothesis advances past the words that were never reported, and a shorter resent hypothesis does not replay words.
+* Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. A revised or shorter hypothesis is aligned with the words already reported, and only the words after its last aligned word are matched. A revision that changes reported words does not replay them.
 * Matching: skipped short words do not freeze the tracker. A spaced em dash does not stall it. Hyphens are removed, so "e-mail" matches "email". The number forms in [Matching Rules](#-matching-rules) match word by word.
 * Click-to-jump: clicking a word moves the tracker to it. Clicking does not replay speech that was not matched.
 * Speech lifecycle: `not-allowed` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A restart whose `start()` throws stops listening and shows an error. Listening is shown only once the session has started. Five consecutive sessions that never start stop listening with a message.
@@ -160,9 +160,10 @@ This section lists only what the focused test run for this change checked. Anyth
 * A render failure shows a recovery message instead of a blank page.
 
 **Regression tests**
-The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx` and `tests/error-boundary.test.tsx`: 62 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
+The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 67 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
 * `tests/voice-reader.test.tsx`: the page, driven through a fake Web Speech recognizer.
 * `tests/matcher.test.ts`: the matcher and number forms, including hyphenated words.
+* `tests/unreported-words.test.ts`: the revision alignment, including a seeded property test over 200 sessions of random revisions.
 * `tests/error-boundary.test.tsx`: the recovery message.
 
 **Not verified**
@@ -179,6 +180,7 @@ The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-re
 **Known limits**
 * A skipped long script word stalls the tracker until a later long word matches. See [Matching Rules](#-matching-rules).
 * An edit that cannot be saved (storage is full or blocked) is kept only until the page is reloaded.
+* When the recognizer revises a hypothesis, words it places before the last reported word are not matched.
 
 **Not built**
 * Sentence-level virtualization, typography controls, and contrast controls beyond the accent colour. The Deepgram and Supabase roadmap items are also not built.

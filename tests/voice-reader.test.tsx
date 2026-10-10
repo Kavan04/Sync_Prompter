@@ -90,6 +90,20 @@ describe("matching engine", () => {
     expect(speak("big performance then we go")).toBe(5);
   });
 
+  it("does not replay the reported words when the last word is revised", () => {
+    startSession("the cat the dog");
+
+    expect(speak("the cat")).toBe(1);
+    expect(speak("the cut")).toBe(1);
+  });
+
+  it("does not replay the reported words when the recognizer revises the front of the hypothesis", () => {
+    startSession("we say we go now");
+
+    expect(speak("we say")).toBe(1);
+    expect(speak("so we say")).toBe(1);
+  });
+
   it("does not replay words when the recognizer resends a shorter hypothesis", () => {
     startSession("we say we go now");
 

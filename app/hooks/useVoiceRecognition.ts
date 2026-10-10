@@ -64,16 +64,23 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 
 const noopSubscribe = () => () => {};
 
-// Words of `current` that were not reported yet. The recognizer may extend its
-// hypothesis, revise its front, or resend a shorter part of it, so the reported
-// words are compared by content rather than counted.
-function unreportedWords(reported: string[], current: string[]): string[] {
-  for (let at = 0; at + current.length <= reported.length; at += 1) {
-    if (current.every((word, i) => reported[at + i] === word)) return [];
+// Words of `current` after its last word that aligns with `reported` in a
+// longest common subsequence. The recognizer may extend, revise or shorten its
+// hypothesis, so the reported words are aligned by content rather than counted.
+export function unreportedWords(reported: string[], current: string[]): string[] {
+  const lengths = Array.from({ length: reported.length + 1 }, () => new Array<number>(current.length + 1).fill(0));
+  for (let i = 1; i <= reported.length; i += 1) {
+    for (let j = 1; j <= current.length; j += 1) {
+      lengths[i][j] =
+        reported[i - 1] === current[j - 1] ? lengths[i - 1][j - 1] + 1 : Math.max(lengths[i - 1][j], lengths[i][j - 1]);
+    }
   }
-  for (let overlap = Math.min(reported.length, current.length); overlap > 0; overlap -= 1) {
-    const tail = reported.length - overlap;
-    if (current.slice(0, overlap).every((word, i) => reported[tail + i] === word)) return current.slice(overlap);
+  let i = reported.length;
+  let j = current.length;
+  while (i > 0 && j > 0) {
+    if (reported[i - 1] === current[j - 1]) return current.slice(j);
+    if (lengths[i - 1][j] >= lengths[i][j - 1]) i -= 1;
+    else j -= 1;
   }
   return current;
 }
