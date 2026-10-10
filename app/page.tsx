@@ -270,7 +270,7 @@ export default function VoiceReader() {
                 }
 
                 return (
-                  <span key={idx} ref={active ? activeWordRef : null} onClick={() => setActiveIndex(idx)} className={clsx("cursor-pointer transition-all duration-200", past ? "text-white blur-0" : "text-[#404040] blur-[0.5px] hover:text-[#777]", active && mode === "flow" && "scale-110")} style={active && mode === "flow" ? { color: activeColor } : {}}>
+                  <span key={idx} data-word-index={idx} aria-current={active ? "true" : undefined} ref={active ? activeWordRef : null} onClick={() => setActiveIndex(idx)} className={clsx("cursor-pointer transition-all duration-200", past ? "text-white blur-0" : "text-[#404040] blur-[0.5px] hover:text-[#777]", active && mode === "flow" && "scale-110")} style={active && mode === "flow" ? { color: activeColor } : {}}>
                     {mode === "highlight" && active ? <span className="px-2 rounded text-black" style={{ backgroundColor: activeColor }}>{word}</span> : word}
                   </span>
                 );
@@ -288,7 +288,7 @@ export default function VoiceReader() {
               <Play fill="black" size={24}/>Read
             </button>
           ) : (
-            <button onClick={stopListening} className="rounded-full p-4 animate-pulse shadow-lg" style={{ backgroundColor: activeColor }}><Square fill="black" size={24}/></button>
+            <button onClick={stopListening} aria-label="Stop" className="rounded-full p-4 animate-pulse shadow-lg" style={{ backgroundColor: activeColor }}><Square fill="black" size={24}/></button>
           )}
           <div className="flex bg-[#222] p-1 rounded-full border border-[#333]">
             {(["flow", "highlight", "caret"] as any[]).map(m => (
