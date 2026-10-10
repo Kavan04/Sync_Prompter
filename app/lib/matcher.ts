@@ -31,7 +31,7 @@ export interface MatchKeys {
 }
 
 // The form a token takes for matching: lower case, letters and digits only.
-export const cleanWord = (token: string) => token.toLowerCase().replace(/[^a-z0-9]/g, "");
+const cleanWord = (token: string) => token.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // Spoken or written forms of one whitespace-separated token, as matchable words.
 export function wordKeys(token: string): string[] {

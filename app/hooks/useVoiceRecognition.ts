@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { cleanWord } from "../lib/matcher";
+import { wordKeys } from "../lib/matcher";
 
 // Types
 interface SpeechRecognitionEvent extends Event {
@@ -65,24 +65,25 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 
 const noopSubscribe = () => () => {};
 
-// Words of `current` after the earliest point where the reported words are all
-// aligned with it, in a longest common subsequence compared by matching form.
-// The recognizer may extend, revise or shorten its hypothesis, so the reported
-// words are aligned by content rather than counted.
+// Match keys of `current` after the earliest point where the keys of `reported`
+// are all aligned with it, in a longest common subsequence. Keys are the matcher's
+// own forms, so "21" and "twenty one" are the same words. The recognizer may
+// extend, revise or shorten its hypothesis, so the reported words are aligned by
+// content rather than counted.
 export function unreportedWords(reported: string[], current: string[]): string[] {
-  const reportedKeys = reported.map(cleanWord);
-  const currentKeys = current.map(cleanWord);
-  const lengths = Array.from({ length: reported.length + 1 }, () => new Array<number>(current.length + 1).fill(0));
-  for (let i = 1; i <= reported.length; i += 1) {
-    for (let j = 1; j <= current.length; j += 1) {
+  const reportedKeys = reported.flatMap(wordKeys);
+  const currentKeys = current.flatMap(wordKeys);
+  const lengths = Array.from({ length: reportedKeys.length + 1 }, () => new Array<number>(currentKeys.length + 1).fill(0));
+  for (let i = 1; i <= reportedKeys.length; i += 1) {
+    for (let j = 1; j <= currentKeys.length; j += 1) {
       lengths[i][j] =
         reportedKeys[i - 1] === currentKeys[j - 1]
           ? lengths[i - 1][j - 1] + 1
           : Math.max(lengths[i - 1][j], lengths[i][j - 1]);
     }
   }
-  const row = lengths[reported.length];
-  return current.slice(row.indexOf(row[current.length]));
+  const row = lengths[reportedKeys.length];
+  return currentKeys.slice(row.indexOf(row[currentKeys.length]));
 }
 
 type SupportState = "unknown" | "supported" | "unsupported";

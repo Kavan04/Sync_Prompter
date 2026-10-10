@@ -90,6 +90,15 @@ describe("matching engine", () => {
     expect(speak("big performance then we go")).toBe(5);
   });
 
+  it("does not replay a number when the recognizer revises its words to digits", () => {
+    startSession("21 21 done");
+
+    expect(speak("twenty one")).toBe(0);
+    expect(speak("21")).toBe(0);
+    expect(speak("21 21")).toBe(1);
+    expect(speak("21 21 done")).toBe(2);
+  });
+
   it("does not replay reported words when the final result changes their case", () => {
     startSession("we go and we go");
 
