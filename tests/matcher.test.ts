@@ -38,6 +38,11 @@ describe("wordKeys", () => {
     expect(wordKeys("1,000")).toEqual(["one", "thousand"]);
   });
 
+  it("removes hyphens so a hyphenated word matches its joined form", () => {
+    expect(wordKeys("e-mail")).toEqual(["email"]);
+    expect(advanceMatch(1, ["email"], buildMatchKeys(["send", "an", "e-mail", "today"]))).toBe(2);
+  });
+
   it("gives digits and number words the same keys", () => {
     expect(wordKeys("100")).toEqual(["one", "hundred"]);
     expect(wordKeys("thirteen")).toEqual(["thirteen"]);

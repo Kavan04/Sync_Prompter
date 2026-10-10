@@ -33,8 +33,6 @@ export interface MatchKeys {
 // Spoken or written forms of one whitespace-separated token, as matchable words.
 export function wordKeys(token: string): string[] {
   const lower = token.toLowerCase().replace(/(\d),(?=\d)/g, "$1");
-  const pieces = lower.split(/[-–—]/);
-  if (pieces.length > 1) return pieces.flatMap(wordKeys);
 
   const decimal = /^\D*(\d+)\.(\d+)\D*$/.exec(lower);
   if (decimal) {

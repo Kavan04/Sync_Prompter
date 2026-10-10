@@ -82,6 +82,21 @@ describe("matching engine", () => {
     expect(speak("then click the button now", true)).toBe(7);
   });
 
+  it("advances past the words of a revised hypothesis that were never reported", () => {
+    startSession("the big performance then we go");
+
+    expect(speak("the big")).toBe(1);
+    expect(speak("big performance")).toBe(2);
+    expect(speak("big performance then we go")).toBe(5);
+  });
+
+  it("does not replay words when the recognizer resends a shorter hypothesis", () => {
+    startSession("we say we go now");
+
+    expect(speak("we say")).toBe(1);
+    expect(speak("we")).toBe(1);
+  });
+
   it("does not replay an unmatched transcript when the user clicks a word (m-1)", () => {
     startSession("alpha bravo charlie delta echo foxtrot golf hotel india juliet xylophone kilo lima");
 

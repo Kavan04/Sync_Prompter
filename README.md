@@ -102,7 +102,7 @@ The matching engine runs in the browser, but speech recognition is not on-device
 These are the exact rules in `app/lib/matcher.ts`. Change them there and here together.
 
 **Word comparison**
-* Words are compared in lower case with punctuation removed. Tokens with no letters or digits (such as a spaced em dash) are ignored.
+* Words are compared in lower case with punctuation removed. Hyphens are removed too, so "e-mail" matches "email". Tokens with no letters or digits (such as a spaced em dash) are ignored.
 * Similarity = 1 − (edit distance ÷ length of the longer word).
 
 **Thresholds**
@@ -148,43 +148,37 @@ These are the exact rules in `app/lib/matcher.ts`. Change them there and here to
 
 ## ✅ Verification Status
 
-This section lists only what was checked in the most recent verification run on the `fm/sync-prompter-audit-fix` branch. Anything not listed under "Built and verified" is not claimed.
+This section lists only what the focused test run for this change checked. Anything not listed under "Built and tested" is not claimed.
 
-**Built and verified**
-* Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. Clicking a word does not replay speech that was not matched.
-* Matching: skipped short words do not freeze the tracker. A spaced em dash does not stall it. The number forms in [Matching Rules](#-matching-rules) match word by word.
-* Click-to-jump works on every word in the script.
-* Speech lifecycle: `not-allowed`, `service-not-allowed`, `audio-capture` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A failed `start()` stops listening and shows an error. Listening is shown only once the session has started.
-* Read is enabled on a first visit. Checked in Chrome against the production build with empty storage.
+**Built and tested** (jsdom tests with a fake Web Speech recognizer, not a live microphone)
+* Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. A revised hypothesis advances past the words that were never reported, and a shorter resent hypothesis does not replay words.
+* Matching: skipped short words do not freeze the tracker. A spaced em dash does not stall it. Hyphens are removed, so "e-mail" matches "email". The number forms in [Matching Rules](#-matching-rules) match word by word.
+* Click-to-jump: clicking a word moves the tracker to it. Clicking does not replay speech that was not matched.
+* Speech lifecycle: `not-allowed` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A restart whose `start()` throws stops listening and shows an error. Listening is shown only once the session has started. Five consecutive sessions that never start stop listening with a message.
+* Read is enabled on a first visit with a script. Read is disabled with an explanation when speech recognition is missing.
 * Saved state: storage that cannot be read or written does not crash the page. Saved values of the wrong type fall back to defaults. An empty script is kept. Saved state survives React StrictMode.
 * A render failure shows a recovery message instead of a blank page.
 
 **Regression tests**
-`npm test` runs 69 tests in four files:
-* `tests/voice-reader.test.tsx`: the page, driven through a fake Web Speech recognizer. The tests for the audit defects failed on the unmodified code and pass now.
-* `tests/matcher.test.ts`: the matcher and number forms.
-* `tests/saved-settings.test.ts`: validation of saved settings.
+The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx` and `tests/error-boundary.test.tsx`: 62 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
+* `tests/voice-reader.test.tsx`: the page, driven through a fake Web Speech recognizer.
+* `tests/matcher.test.ts`: the matcher and number forms, including hyphenated words.
 * `tests/error-boundary.test.tsx`: the recovery message.
 
-**Other checks**
-* `npm run lint`: no problems.
-* `npx tsc --noEmit`: no errors.
-* `npm run build`: succeeds, and `/` is prerendered as static content.
-
-**Dependencies**
-* `next` is pinned to 16.3.8. It is the lowest 16.x release that clears all 38 advisories `npm audit` reported for `next@16.1.0`.
-* After the upgrade, `npm audit` no longer lists `next`. It reports 15 advisories (1 low, 2 moderate, 12 high), all in the dev-tooling chain of `eslint-config-next`. That package is pinned at 16.1.0. Its audit fix is a downgrade to 14.2.35, so these are not fixed.
-
-**Known limits**
-* A skipped long script word stalls the tracker until a later long word matches. See [Matching Rules](#-matching-rules).
-
 **Not verified**
-* Live recognition with a microphone. The tests use a fake recognizer, and no live speech session was run.
-* Browsers other than Chrome. Chrome was checked only for the Read button on a first visit.
+* `npm run lint`, `npx tsc --noEmit` and `npm run build` were not run for this change.
+* `npm audit` was not re-run for this change, so no advisory counts are stated. `next` is pinned to 16.3.8 in `package.json`; whether that clears the advisories reported for `next@16.1.0` is not verified here.
+* Live recognition with a microphone. No live speech session was run.
+* Browsers other than Chrome. The Read button was not checked in Chrome or on a production build.
+* `service-not-allowed` and `audio-capture` errors, and a failed first `start()`. These are handled in the code, but no test covers them.
 * "Zero-latency" tracking. Latency was not measured.
 * The network traffic from speech recognition. The privacy statement follows the Web Speech API's documented behaviour; traffic was not captured.
 * Wake lock behaviour.
 * The live Vercel deployment. These changes have not been deployed.
+
+**Known limits**
+* A skipped long script word stalls the tracker until a later long word matches. See [Matching Rules](#-matching-rules).
+* An edit that cannot be saved (storage is full or blocked) is kept only until the page is reloaded.
 
 **Not built**
 * Sentence-level virtualization, typography controls, and contrast controls beyond the accent colour. The Deepgram and Supabase roadmap items are also not built.

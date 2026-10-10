@@ -64,6 +64,20 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 
 const noopSubscribe = () => () => {};
 
+// Words of `current` that were not reported yet. The recognizer may extend its
+// hypothesis, revise its front, or resend a shorter part of it, so the reported
+// words are compared by content rather than counted.
+function unreportedWords(reported: string[], current: string[]): string[] {
+  for (let at = 0; at + current.length <= reported.length; at += 1) {
+    if (current.every((word, i) => reported[at + i] === word)) return [];
+  }
+  for (let overlap = Math.min(reported.length, current.length); overlap > 0; overlap -= 1) {
+    const tail = reported.length - overlap;
+    if (current.slice(0, overlap).every((word, i) => reported[tail + i] === word)) return current.slice(overlap);
+  }
+  return current;
+}
+
 type SupportState = "unknown" | "supported" | "unsupported";
 
 // "unknown" on the server, so the first render matches the server output.
@@ -88,7 +102,7 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
   const failedStartsRef = useRef(0);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Words already reported for each result index in the current session.
-  const reportedRef = useRef(new Map<number, number>());
+  const reportedRef = useRef(new Map<number, string[]>());
 
   useEffect(() => {
     onWordsRef.current = onWords;
@@ -158,9 +172,8 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
       const tokens: string[] = [];
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const words = event.results[i][0].transcript.split(/\s+/).filter(word => word.length > 0);
-        const reported = reportedRef.current.get(i) ?? 0;
-        tokens.push(...words.slice(reported));
-        reportedRef.current.set(i, words.length);
+        tokens.push(...unreportedWords(reportedRef.current.get(i) ?? [], words));
+        reportedRef.current.set(i, words);
       }
       if (tokens.length === 0) return;
 
