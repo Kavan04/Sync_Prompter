@@ -30,6 +30,9 @@ export interface MatchKeys {
   wordIndex: number[];
 }
 
+// The form a token takes for matching: lower case, letters and digits only.
+export const cleanWord = (token: string) => token.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 // Spoken or written forms of one whitespace-separated token, as matchable words.
 export function wordKeys(token: string): string[] {
   const lower = token.toLowerCase().replace(/(\d),(?=\d)/g, "$1");
@@ -40,7 +43,7 @@ export function wordKeys(token: string): string[] {
     return [...numberWords(Number(decimal[1])), "point", ...digits];
   }
 
-  const clean = lower.replace(/[^a-z0-9]/g, "");
+  const clean = cleanWord(lower);
   const ordinal = /^(\d+)(st|nd|rd|th)$/.exec(clean);
   if (ordinal) {
     const words = ordinalWords(Number(ordinal[1]));

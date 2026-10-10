@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { cleanWord } from "../lib/matcher";
 
 // Types
 interface SpeechRecognitionEvent extends Event {
@@ -64,25 +65,24 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 
 const noopSubscribe = () => () => {};
 
-// Words of `current` after its last word that aligns with `reported` in a
-// longest common subsequence. The recognizer may extend, revise or shorten its
-// hypothesis, so the reported words are aligned by content rather than counted.
+// Words of `current` after the earliest point where the reported words are all
+// aligned with it, in a longest common subsequence compared by matching form.
+// The recognizer may extend, revise or shorten its hypothesis, so the reported
+// words are aligned by content rather than counted.
 export function unreportedWords(reported: string[], current: string[]): string[] {
+  const reportedKeys = reported.map(cleanWord);
+  const currentKeys = current.map(cleanWord);
   const lengths = Array.from({ length: reported.length + 1 }, () => new Array<number>(current.length + 1).fill(0));
   for (let i = 1; i <= reported.length; i += 1) {
     for (let j = 1; j <= current.length; j += 1) {
       lengths[i][j] =
-        reported[i - 1] === current[j - 1] ? lengths[i - 1][j - 1] + 1 : Math.max(lengths[i - 1][j], lengths[i][j - 1]);
+        reportedKeys[i - 1] === currentKeys[j - 1]
+          ? lengths[i - 1][j - 1] + 1
+          : Math.max(lengths[i - 1][j], lengths[i][j - 1]);
     }
   }
-  let i = reported.length;
-  let j = current.length;
-  while (i > 0 && j > 0) {
-    if (reported[i - 1] === current[j - 1]) return current.slice(j);
-    if (lengths[i - 1][j] >= lengths[i][j - 1]) i -= 1;
-    else j -= 1;
-  }
-  return current;
+  const row = lengths[reported.length];
+  return current.slice(row.indexOf(row[current.length]));
 }
 
 type SupportState = "unknown" | "supported" | "unsupported";

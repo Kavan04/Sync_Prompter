@@ -74,12 +74,18 @@ function VoiceReader() {
     const wakeLockNavigator = navigator as Navigator & {
       wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinelLike> };
     };
+    let cancelled = false;
     if (isListening && wakeLockNavigator.wakeLock) {
       wakeLockNavigator.wakeLock.request("screen").then(lock => {
+        if (cancelled) {
+          lock.release().catch(() => {});
+          return;
+        }
         wakeLockRef.current = lock;
       }).catch(() => {});
     }
     return () => {
+      cancelled = true;
       wakeLockRef.current?.release().catch(() => {});
       wakeLockRef.current = null;
     };

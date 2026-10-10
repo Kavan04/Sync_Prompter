@@ -90,6 +90,27 @@ describe("matching engine", () => {
     expect(speak("big performance then we go")).toBe(5);
   });
 
+  it("does not replay reported words when the final result changes their case", () => {
+    startSession("we go and we go");
+
+    expect(speak("we go")).toBe(1);
+    expect(speak("We Go", true)).toBe(1);
+  });
+
+  it("does not replay reported words when the final result adds punctuation", () => {
+    startSession("we go and we go");
+
+    expect(speak("we go")).toBe(1);
+    expect(speak("We go.", true)).toBe(1);
+  });
+
+  it("matches a repeated word in a growing hypothesis at its later occurrence", () => {
+    startSession("we go and we go");
+
+    expect(speak("we go")).toBe(1);
+    expect(speak("we go and we go")).toBe(4);
+  });
+
   it("does not replay the reported words when the last word is revised", () => {
     startSession("the cat the dog");
 
@@ -259,6 +280,47 @@ describe("speech lifecycle", () => {
     expect(screen.getByText(/network/i)).toBeTruthy();
   });
 
+  it("stops without retrying on service-not-allowed and says why", () => {
+    startSession("Some script.");
+    act(() => {
+      recognizer().fireError("service-not-allowed");
+      recognizer().fireEnd();
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(recognizer().startCalls).toBe(1);
+    expect(screen.getByText(/speech service is not allowed here/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(readButton()).not.toBeNull();
+  });
+
+  it("stops without retrying on audio-capture and says why", () => {
+    startSession("Some script.");
+    act(() => {
+      recognizer().fireError("audio-capture");
+      recognizer().fireEnd();
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(recognizer().startCalls).toBe(1);
+    expect(screen.getByText(/no microphone was found/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(readButton()).not.toBeNull();
+  });
+
+  it("stops without retrying when the first start() throws and says why", () => {
+    FakeSpeechRecognition.startError = call => (call === 1 ? new Error("start failed") : null);
+    renderReader("Some script.");
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(recognizer().startCalls).toBe(1);
+    expect(screen.getByText(/could not start/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(readButton()).not.toBeNull();
+  });
+
   it("shows listening only after the session starts (M3)", () => {
     renderReader("Some script.");
 
@@ -335,6 +397,30 @@ describe("speech lifecycle", () => {
 
     expect(recognizer().startCalls).toBe(8);
     expect(screen.queryByText(/stopped unexpectedly/i)).toBeNull();
+  });
+});
+
+describe("wake lock", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "wakeLock");
+  });
+
+  it("releases a wake lock that arrives after Stop", async () => {
+    let resolveLock: (lock: { release: () => Promise<void> }) => void = () => {};
+    const release = vi.fn(() => Promise.resolve());
+    const request = vi.fn(() => new Promise<{ release: () => Promise<void> }>(resolve => {
+      resolveLock = resolve;
+    }));
+    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request } });
+
+    startSession("Some script.");
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(stopButton());
+    await act(async () => {
+      resolveLock({ release });
+    });
+
+    expect(release).toHaveBeenCalledTimes(1);
   });
 });
 

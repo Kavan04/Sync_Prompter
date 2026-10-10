@@ -151,16 +151,17 @@ These are the exact rules in `app/lib/matcher.ts`. Change them there and here to
 This section lists only what the focused test run for this change checked. Anything not listed under "Built and tested" is not claimed.
 
 **Built and tested** (jsdom tests with a fake Web Speech recognizer, not a live microphone)
-* Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. A revised or shorter hypothesis is aligned with the words already reported, and only the words after its last aligned word are matched. A revision that changes reported words does not replay them.
+* Matching: each recognizer result is matched only for the words that are new since the previous result. Re-sent results do not advance the tracker. A revised or shorter hypothesis is aligned with the words already reported, and only the words after its last aligned word are matched. A revision that changes the case or punctuation of reported words does not replay them.
 * Matching: skipped short words do not freeze the tracker. A spaced em dash does not stall it. Hyphens are removed, so "e-mail" matches "email". The number forms in [Matching Rules](#-matching-rules) match word by word.
 * Click-to-jump: clicking a word moves the tracker to it. Clicking does not replay speech that was not matched.
-* Speech lifecycle: `not-allowed` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A restart whose `start()` throws stops listening and shows an error. Listening is shown only once the session has started. Five consecutive sessions that never start stop listening with a message.
+* Speech lifecycle: `not-allowed`, `service-not-allowed`, `audio-capture` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A restart or a first `start()` that throws stops listening and shows an error. Listening is shown only once the session has started. Consecutive sessions that never start count toward a limit of five, after which listening stops with a message. The count is reset when recognized speech arrives or Read is pressed, not when a session starts.
+* Wake lock: a lock that resolves after Stop is released (jsdom test with a mocked Wake Lock API).
 * Read is enabled on a first visit with a script. Read is disabled with an explanation when speech recognition is missing.
 * Saved state: storage that cannot be read or written does not crash the page. Saved values of the wrong type fall back to defaults. An empty script is kept. Saved state survives React StrictMode.
 * A render failure shows a recovery message instead of a blank page.
 
 **Regression tests**
-The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 67 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
+The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 74 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
 * `tests/voice-reader.test.tsx`: the page, driven through a fake Web Speech recognizer.
 * `tests/matcher.test.ts`: the matcher and number forms, including hyphenated words.
 * `tests/unreported-words.test.ts`: the revision alignment, including a seeded property test over 200 sessions of random revisions.
@@ -171,7 +172,6 @@ The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-re
 * `npm audit` was not re-run for this change, so no advisory counts are stated. `next` is pinned to 16.3.8 in `package.json`; whether that clears the advisories reported for `next@16.1.0` is not verified here.
 * Live recognition with a microphone. No live speech session was run.
 * Browsers other than Chrome. The Read button was not checked in Chrome or on a production build.
-* `service-not-allowed` and `audio-capture` errors, and a failed first `start()`. These are handled in the code, but no test covers them.
 * "Zero-latency" tracking. Latency was not measured.
 * The network traffic from speech recognition. The privacy statement follows the Web Speech API's documented behaviour; traffic was not captured.
 * Wake lock behaviour.
