@@ -41,6 +41,7 @@ interface SpeechRecognitionWindow {
 }
 
 const UNSUPPORTED_MESSAGE = "Browser not supported. Please use Chrome or Safari.";
+const FAILED_INIT_MESSAGE = "Failed to initialize speech recognition.";
 const START_FAILED_MESSAGE = "Speech recognition could not start. Press Read to try again.";
 const RESTART_FAILED_MESSAGE = "Speech recognition could not restart. Press Read to try again.";
 const UNEXPECTED_STOP_MESSAGE = "Speech recognition stopped unexpectedly. Please try again.";
@@ -91,6 +92,22 @@ type SupportState = "unknown" | "supported" | "unsupported";
 // "unknown" on the server, so the first render matches the server output.
 const getSupportState = (): SupportState => (getSpeechRecognitionConstructor() ? "supported" : "unsupported");
 
+interface SpeechSetup {
+  recognition: SpeechRecognition | null;
+  error: string | null;
+}
+
+function createSpeechRecognition(): SpeechSetup {
+  const Constructor = getSpeechRecognitionConstructor();
+  if (!Constructor) return { recognition: null, error: null };
+  try {
+    return { recognition: new Constructor(), error: null };
+  } catch (e) {
+    console.error("Speech recognition init error:", e);
+    return { recognition: null, error: FAILED_INIT_MESSAGE };
+  }
+}
+
 // Calls onWords with the words that are new since the previous result. The
 // recognizer re-sends the in-progress hypothesis, so words that were already
 // reported in this session are left out.
@@ -98,7 +115,8 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const support = useSyncExternalStore(noopSubscribe, getSupportState, (): SupportState => "unknown");
-  const hasSupport = support === "supported";
+  const [speech] = useState(createSpeechRecognition);
+  const hasSupport = support === "supported" && speech.recognition !== null;
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const onWordsRef = useRef(onWords);
@@ -159,11 +177,8 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
   }, [beginSession, clearRestartTimer, stopWithError]);
 
   useEffect(() => {
-    const Constructor = getSpeechRecognitionConstructor();
-    if (!Constructor) return;
-
-    // If the constructor throws, the error reaches the page's error boundary.
-    const recognition = new Constructor();
+    const recognition = speech.recognition;
+    if (!recognition) return;
 
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -223,7 +238,7 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
         // Already stopped.
       }
     };
-  }, [clearRestartTimer, scheduleRestart, stopWithError]);
+  }, [speech, clearRestartTimer, scheduleRestart, stopWithError]);
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -251,7 +266,7 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
 
   return {
     isListening,
-    error: error ?? (support === "unsupported" ? UNSUPPORTED_MESSAGE : null),
+    error: error ?? speech.error ?? (support === "unsupported" ? UNSUPPORTED_MESSAGE : null),
     hasSupport,
     startListening,
     stopListening,

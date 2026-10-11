@@ -475,6 +475,24 @@ describe("first visit and browser support", () => {
       Reflect.set(window, "webkitSpeechRecognition", original);
     }
   });
+
+  it("keeps the page usable and shows a message when the recognizer cannot be created", () => {
+    const original = Reflect.get(window, "webkitSpeechRecognition");
+    Reflect.set(window, "webkitSpeechRecognition", class {
+      constructor() {
+        throw new Error("constructor failed");
+      }
+    });
+    try {
+      render(<Page />);
+
+      expect(screen.getByRole("textbox")).toBeTruthy();
+      expect((readButton() as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText(/failed to initialize speech recognition/i)).toBeTruthy();
+    } finally {
+      Reflect.set(window, "webkitSpeechRecognition", original);
+    }
+  });
 });
 
 describe("saved state", () => {

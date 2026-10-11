@@ -167,12 +167,12 @@ This section lists only what the focused test run for this change checked. Anyth
 * Click-to-jump: clicking a word moves the tracker to it. Clicking does not replay speech that was not matched.
 * Speech lifecycle: `not-allowed`, `service-not-allowed`, `audio-capture` and `network` stop listening with a specific message and are not retried. Stop cancels a pending restart, and so does unmounting. A restart or a first `start()` that throws stops listening and shows an error. Listening is shown only once the session has started. Consecutive sessions that never start count toward a limit of five, after which listening stops with a message. The count is reset when recognized speech arrives or Read is pressed, not when a session starts.
 * Wake lock: a lock that resolves after Stop is released (jsdom test with a mocked Wake Lock API).
-* Read is enabled on a first visit with a script. Read is disabled with an explanation when speech recognition is missing.
+* Read is enabled on a first visit with a script. Read is disabled with an explanation when speech recognition is missing or cannot be created, and the rest of the page stays usable.
 * Saved state: storage that cannot be read or written does not crash the page. Saved values of the wrong type fall back to defaults. An empty script is kept. Saved state survives React StrictMode.
 * A render failure shows a recovery message instead of a blank page.
 
 **Regression tests**
-The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 82 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
+The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 83 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
 * `tests/voice-reader.test.tsx`: the page, driven through a fake Web Speech recognizer.
 * `tests/matcher.test.ts`: the matcher and number forms, including hyphenated words.
 * `tests/unreported-words.test.ts`: the revision alignment, including a seeded property test over 200 sessions of random revisions.
