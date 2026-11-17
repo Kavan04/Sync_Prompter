@@ -1,4 +1,6 @@
 import { StrictMode } from "react";
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Page from "../app/page";
@@ -37,6 +39,11 @@ function wordElement(index: number): HTMLElement {
 
 function speak(text: string, isFinal = false) {
   act(() => recognizer().speak(text, isFinal));
+  return activeIndex();
+}
+
+function speakSplit(stable: string, unstable: string) {
+  act(() => recognizer().speakSplit(stable, unstable));
   return activeIndex();
 }
 
@@ -80,6 +87,25 @@ describe("matching engine", () => {
     expect(activeIndex()).toBe(2);
 
     expect(speak("then click the button now", true)).toBe(7);
+  });
+
+  it("does not advance when the recognizer merges a split interim pair into one final result (C1)", () => {
+    startSession("I say yes and I say yes again");
+
+    expect(speak("I say")).toBe(1);
+    expect(speakSplit("I say", " yes and")).toBe(3);
+    expect(speak("I say yes and", true)).toBe(3);
+    expect(speak("I say yes again", true)).toBe(7);
+  });
+
+  it("matches a later utterance at a result index freed by a merged final result (C1)", () => {
+    startSession("I say yes and yes we can");
+
+    expect(speak("I say")).toBe(1);
+    expect(speakSplit("I say", " yes and")).toBe(3);
+    expect(speak("I say yes and", true)).toBe(3);
+    expect(speak("yes")).toBe(4);
+    expect(speak("yes we can", true)).toBe(6);
   });
 
   it("advances past the words of a revised hypothesis that were never reported", () => {
@@ -490,6 +516,35 @@ describe("first visit and browser support", () => {
       expect((readButton() as HTMLButtonElement).disabled).toBe(true);
       expect(screen.getByText(/failed to initialize speech recognition/i)).toBeTruthy();
     } finally {
+      Reflect.set(window, "webkitSpeechRecognition", original);
+    }
+  });
+
+  it("hydrates the server markup without a mismatch when the recognizer cannot be created", async () => {
+    const original = Reflect.get(window, "webkitSpeechRecognition");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const onRecoverableError = vi.fn();
+    let root: Root | null = null;
+    try {
+      Reflect.deleteProperty(window, "webkitSpeechRecognition");
+      container.innerHTML = renderToString(<Page />);
+      Reflect.set(window, "webkitSpeechRecognition", class {
+        constructor() {
+          throw new Error("constructor failed");
+        }
+      });
+
+      await act(async () => {
+        root = hydrateRoot(container, <Page />, { onRecoverableError });
+      });
+
+      expect(onRecoverableError).not.toHaveBeenCalled();
+      expect(screen.getByText(/failed to initialize speech recognition/i)).toBeTruthy();
+      expect((readButton() as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      act(() => root?.unmount());
+      container.remove();
       Reflect.set(window, "webkitSpeechRecognition", original);
     }
   });

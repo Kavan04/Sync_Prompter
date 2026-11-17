@@ -127,8 +127,8 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
   const sessionStartedRef = useRef(false);
   const failedStartsRef = useRef(0);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Words already reported for each result index in the current session.
-  const reportedRef = useRef(new Map<number, string[]>());
+  // Words already reported in the current session, by result index.
+  const reportedRef = useRef<string[][]>([]);
 
   useEffect(() => {
     onWordsRef.current = onWords;
@@ -187,17 +187,21 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
 
     recognition.onstart = () => {
       sessionStartedRef.current = true;
-      reportedRef.current.clear();
+      reportedRef.current = [];
       if (shouldBeListeningRef.current) setIsListening(true);
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const tokens: string[] = [];
+      const reported = reportedRef.current;
+      const previous = reported.slice(event.resultIndex).flat();
+      reported.length = event.resultIndex;
+      const current: string[] = [];
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const words = event.results[i][0].transcript.split(/\s+/).filter(word => word.length > 0);
-        tokens.push(...unreportedWords(reportedRef.current.get(i) ?? [], words));
-        reportedRef.current.set(i, words);
+        reported[i] = words;
+        current.push(...words);
       }
+      const tokens = unreportedWords(previous, current);
       if (tokens.length === 0) return;
 
       failedStartsRef.current = 0;
@@ -266,7 +270,7 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
 
   return {
     isListening,
-    error: error ?? speech.error ?? (support === "unsupported" ? UNSUPPORTED_MESSAGE : null),
+    error: error ?? (support === "supported" ? speech.error : null) ?? (support === "unsupported" ? UNSUPPORTED_MESSAGE : null),
     hasSupport,
     startListening,
     stopListening,
