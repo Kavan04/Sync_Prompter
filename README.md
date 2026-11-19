@@ -171,6 +171,7 @@ This section lists only what the focused test run for this change checked. Anyth
 * Saved state: storage that cannot be read or written does not crash the page. Saved values of the wrong type fall back to defaults. An empty script is kept. Saved state survives React StrictMode.
 * A render failure shows a recovery message instead of a blank page.
 * Dependencies: `next` is pinned to 16.4.6. `npm audit --omit=dev` reports 0 vulnerabilities, and `npm run build` completes.
+* Static checks: `npm run lint` reports no problems and `npx tsc --noEmit` reports no type errors.
 
 **Regression tests**
 The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 86 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
@@ -180,7 +181,6 @@ The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-re
 * `tests/error-boundary.test.tsx`: the recovery message.
 
 **Not verified**
-* `npm run lint` and `npx tsc --noEmit` were not run for this change.
 * Development dependencies still have `npm audit` advisories (eslint, babel, jsdom/undici and related tooling); they are not shipped to the browser and were not upgraded here.
 * Live recognition with a microphone. No live speech session was run.
 * Browsers other than Chrome. The Read button was not checked in Chrome or on a production build.

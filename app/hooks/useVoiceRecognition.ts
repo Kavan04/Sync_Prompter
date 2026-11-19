@@ -177,13 +177,15 @@ export function useVoiceRecognition(onWords: (tokens: string[]) => void) {
   }, [beginSession, clearRestartTimer, stopWithError]);
 
   useEffect(() => {
-    const recognition = speech.recognition;
+    // Read back through the ref: the recognizer is configured here, and a
+    // value returned by useState must not be mutated directly.
+    recognitionRef.current = speech.recognition;
+    const recognition = recognitionRef.current;
     if (!recognition) return;
 
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognitionRef.current = recognition;
 
     recognition.onstart = () => {
       sessionStartedRef.current = true;
