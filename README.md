@@ -170,6 +170,7 @@ This section lists only what the focused test run for this change checked. Anyth
 * Read is enabled on a first visit with a script. Read is disabled with an explanation when speech recognition is missing or cannot be created, and the rest of the page stays usable. When the recognizer cannot be created, the server-rendered page hydrates without a mismatch.
 * Saved state: storage that cannot be read or written does not crash the page. Saved values of the wrong type fall back to defaults. An empty script is kept. Saved state survives React StrictMode.
 * A render failure shows a recovery message instead of a blank page.
+* Dependencies: `next` is pinned to 16.4.6. `npm audit --omit=dev` reports 0 vulnerabilities, and `npm run build` completes.
 
 **Regression tests**
 The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-reader.test.tsx`, `tests/error-boundary.test.tsx` and `tests/unreported-words.test.ts`: 86 tests, all passing. `tests/saved-settings.test.ts` was not part of that run.
@@ -179,8 +180,8 @@ The focused run for this change covered `tests/matcher.test.ts`, `tests/voice-re
 * `tests/error-boundary.test.tsx`: the recovery message.
 
 **Not verified**
-* `npm run lint`, `npx tsc --noEmit` and `npm run build` were not run for this change.
-* `npm audit` was not re-run for this change, so no advisory counts are stated. `next` is pinned to 16.3.8 in `package.json`; whether that clears the advisories reported for `next@16.1.0` is not verified here.
+* `npm run lint` and `npx tsc --noEmit` were not run for this change.
+* Development dependencies still have `npm audit` advisories (eslint, babel, jsdom/undici and related tooling); they are not shipped to the browser and were not upgraded here.
 * Live recognition with a microphone. No live speech session was run.
 * Browsers other than Chrome. The Read button was not checked in Chrome or on a production build.
 * "Zero-latency" tracking. Latency was not measured.
